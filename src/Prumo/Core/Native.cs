@@ -39,6 +39,49 @@ internal static unsafe class Native
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool SetProcessInformation(nint h, int cls, ref PROCESS_POWER_THROTTLING_STATE info, int size);
 
+    // ---- Memory priority, priority boost, CPU Sets, timer resolution ----
+    public const int ProcessMemoryPriority = 0;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetProcessInformation(nint h, int cls, ref uint info, int size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetProcessPriorityBoost(nint h, bool disable);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetSystemCpuSetInformation(byte* info, uint length, out uint returned, nint process, uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetProcessDefaultCpuSets(nint h, uint[]? ids, uint count);
+
+    [DllImport("ntdll.dll")]
+    public static extern int NtSetTimerResolution(uint desired, bool set, out uint current);
+
+    /// <summary>CPU Set id of each logical processor, index = logical processor number (group 0).</summary>
+    public static uint[] CpuSetIds()
+    {
+        GetSystemCpuSetInformation(null, 0, out var len, GetCurrentProcess(), 0);
+        if (len == 0) return Array.Empty<uint>();
+        var buf = new byte[len];
+        var ids = new uint[Environment.ProcessorCount];
+        fixed (byte* b = buf)
+        {
+            if (!GetSystemCpuSetInformation(b, len, out len, GetCurrentProcess(), 0)) return Array.Empty<uint>();
+            // SYSTEM_CPU_SET_INFORMATION: Size(4) Type(4) then CpuSet { Id(4) Group(2) LogicalProcessorIndex(1) ... }
+            for (uint off = 0; off < len;)
+            {
+                uint size = *(uint*)(b + off);
+                uint id = *(uint*)(b + off + 8);
+                ushort group = *(ushort*)(b + off + 12);
+                byte lp = *(b + off + 14);
+                if (group == 0 && lp < ids.Length) ids[lp] = id;
+                if (size == 0) break;
+                off += size;
+            }
+        }
+        return ids;
+    }
+
     // ---- I/O priority, process snapshot ----
     public const int ProcessIoPriority = 33;
 

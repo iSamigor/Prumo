@@ -8,9 +8,13 @@ namespace Prumo;
 
 public partial class App : Application
 {
-    const string MutexName = @"Local\Prumo.SingleInstance";
-    const string ShowEventName = @"Local\Prumo.Show";
-    const string ExitEventName = @"Local\Prumo.Exit";
+    // A test copy (PRUMO_HOME set) gets its own names, so it never talks to the installed instance.
+    static readonly string Suffix = Environment.GetEnvironmentVariable("PRUMO_HOME") is { Length: > 0 } h
+        ? "." + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(h.ToLowerInvariant())))[..12]
+        : "";
+    static readonly string MutexName = @"Local\Prumo.SingleInstance" + Suffix;
+    static readonly string ShowEventName = @"Local\Prumo.Show" + Suffix;
+    static readonly string ExitEventName = @"Local\Prumo.Exit" + Suffix;
 
     Mutex? _mutex;
     Engine? _engine;
@@ -47,6 +51,9 @@ public partial class App : Application
             File.WriteAllText(Path.Combine(AppConfig.Dir, ".welcomed"), "");
         }
 
+        if (e.Args.Contains("--enable-game-boost", StringComparer.OrdinalIgnoreCase))
+            EnableGameBoost(config, log);
+
         ISystemSampler? sampler = null;
         try { sampler = new SystemSampler(); } catch { }
         _engine = new Engine(config, log, sampler);
@@ -62,6 +69,45 @@ public partial class App : Application
         bool toTray = e.Args.Contains("--tray", StringComparer.OrdinalIgnoreCase);
         if (!toTray) ShowWindow();
         else EnableDarkTitle(_window);
+    }
+
+    /// <summary>Turns on every setting that helps games and adds a rule per game library (installer option).</summary>
+    static void EnableGameBoost(AppConfig config, ActivityLog log)
+    {
+        int added = 0;
+        void Add(string folder)
+        {
+            var pattern = folder.TrimEnd('\\') + @"\*";
+            if (config.RuleFor(pattern) is not null) return;
+            UI.MainWindow.ApplyGamePreset(config.GetOrAddRule(pattern));
+            added++;
+        }
+        foreach (var lib in GameLibraries.Find())
+        {
+            // The Riot folder also holds the Riot Client launcher: only the game folders get the game preset.
+            if (lib.Launcher == "Riot")
+            {
+                foreach (var dir in Directory.EnumerateDirectories(lib.Path))
+                    if (!Path.GetFileName(dir).Equals("Riot Client", StringComparison.OrdinalIgnoreCase)) Add(dir);
+            }
+            else Add(lib.Path);
+        }
+        // Games with their own rules keep them, plus the dedicated GPU and no EcoQoS throttling.
+        foreach (var r in config.Rules.Where(r => r.CpuPriority == CpuPriority.High && !r.IsPattern))
+        {
+            r.GpuPreference ??= GpuPreference.HighPerformance;
+            r.Efficiency ??= EfficiencyMode.Off;
+        }
+
+        config.PerformanceMode = true;
+        config.PerformancePlan ??= PowerPlans.List().FirstOrDefault(p => p.Name.Contains("Highest", StringComparison.OrdinalIgnoreCase)
+            || p.Name.Contains("Ultimate", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("High performance", StringComparison.OrdinalIgnoreCase))?.Name;
+        config.ForegroundBoost.Enabled = true;
+        config.SmartTrim.TrimWorkingSets = true;
+        config.SmartTrim.PurgeStandbyList = true;
+        config.TimerResolution100ns = 5_000;
+        config.Save();
+        log.Add(EventKind.Info, 0, "prumo.exe", $"Otimizações para jogos ligadas ({added} regras de bibliotecas de jogos)");
     }
 
     void Listen(string name, Action action)

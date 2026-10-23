@@ -1,7 +1,7 @@
 # Installs Prumo to C:\Program Files\Prumo, starts it at logon and puts Process Lasso to sleep
 # (stopped and set to not start; NOT uninstalled, so it can be turned back on with -RestoreLasso).
 # Run elevated:  powershell -ExecutionPolicy Bypass -File tools\install.ps1
-param([switch]$RestoreLasso, [switch]$KeepLasso)
+param([switch]$RestoreLasso, [switch]$KeepLasso, [switch]$GameBoost)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -41,5 +41,7 @@ if (-not $KeepLasso) {
 } else { Write-Host '3/4 Process Lasso mantido.' }
 
 Write-Host '4/4 Iniciando o Prumo e registrando a inicialização com o Windows...'
-Start-Process "$dest\Prumo.exe" -ArgumentList '--enable-autostart'
+$launchArgs = '--enable-autostart --tray'
+if ($GameBoost) { $launchArgs += ' --enable-game-boost' }
+Start-Process "$dest\Prumo.exe" -ArgumentList $launchArgs
 Write-Host 'Pronto.'

@@ -1,6 +1,6 @@
 namespace Prumo.Core;
 
-public enum EventKind { Restrained, Restored, RuleApplied, RuleFailed, PowerPlan, Info }
+public enum EventKind { Restrained, Restored, RuleApplied, RuleFailed, PowerPlan, Info, Memory }
 
 public sealed record LogEntry(DateTime Time, EventKind Kind, int Pid, string Exe, string Text);
 

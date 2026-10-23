@@ -7,8 +7,21 @@ public enum CpuPriority { Idle, BelowNormal, Normal, AboveNormal, High, Realtime
 public enum IoPriority { VeryLow = 0, Low = 1, Normal = 2, High = 3 }
 public enum GpuPriority { Idle = 0, BelowNormal = 1, Normal = 2, AboveNormal = 3, High = 4, Realtime = 5 }
 public enum EfficiencyMode { Off, On }
+public enum MemoryPriority { VeryLow = 1, Low = 2, Medium = 3, BelowNormal = 4, Normal = 5 }
+public enum GpuPreference { PowerSaving = 1, HighPerformance = 2 }
 
-/// <summary>What to apply to every process whose executable name matches <see cref="Exe"/>.</summary>
+/// <summary>"When the process goes over ThresholdPercent, keep it on Cores logical CPUs for DurationMs."</summary>
+public sealed class CpuLimit
+{
+    public double ThresholdPercent { get; set; } = 50;
+    public int Cores { get; set; } = 4;
+    public int DurationMs { get; set; } = 10_000;
+}
+
+/// <summary>
+/// What to apply to every process matching <see cref="Exe"/>: an executable name ("game.exe"), or a
+/// wildcard pattern; a pattern with a backslash is matched against the full path ("E:\Steam\steamapps\common\*").
+/// </summary>
 public sealed class ProcessRule
 {
     public string Exe { get; set; } = "";
@@ -22,10 +35,55 @@ public sealed class ProcessRule
     public string? PowerPlan { get; set; }
     /// <summary>Exclude from ProBalance.</summary>
     public bool ProBalanceExcluded { get; set; }
+    public MemoryPriority? MemoryPriority { get; set; }
+    /// <summary>Soft affinity (Windows CPU Sets): the scheduler prefers these CPUs. Same syntax as Affinity.</summary>
+    public string? CpuSets { get; set; }
+    /// <summary>True = turn off Windows' dynamic priority boost for this process's threads.</summary>
+    public bool? DisablePriorityBoost { get; set; }
+    /// <summary>Which GPU DirectX picks for this executable (Windows graphics settings); applies on its next start.</summary>
+    public GpuPreference? GpuPreference { get; set; }
+    public CpuLimit? CpuLimit { get; set; }
+    /// <summary>Executable names (wildcards allowed) a pattern rule skips, e.g. tools that live in a game library.</summary>
+    public List<string>? Except { get; set; }
+
+    /// <summary>Non-games found in game libraries: Wallpaper Engine, crash reporters, VR runtimes, redistributable installers.</summary>
+    public static readonly string[] NotGames =
+    {
+        "wallpaper32.exe", "wallpaper64.exe", "webwallpaper32.exe", "ui32.exe", "launcher.exe",
+        "*crashhandler*.exe", "*crashreport*.exe", "*crashpad*.exe", "unitycrashhandler*.exe",
+        "vrserver.exe", "vrmonitor.exe", "vrcompositor.exe", "vrdashboard.exe", "vrwebhelper.exe",
+        "vc_redist*.exe", "dxsetup.exe", "dotnet*.exe", "ueprereqsetup*.exe", "easyanticheat_setup.exe",
+    };
+
+    [JsonIgnore] public bool IsPattern => Exe.Contains('*') || Exe.Contains('?') || Exe.Contains('\\');
+    [JsonIgnore] public bool MatchesPath => Exe.Contains('\\');
 
     [JsonIgnore] public bool IsEmpty =>
         CpuPriority is null && IoPriority is null && GpuPriority is null && Affinity is null &&
-        Efficiency is null && PowerPlan is null && !ProBalanceExcluded;
+        Efficiency is null && PowerPlan is null && !ProBalanceExcluded && MemoryPriority is null &&
+        CpuSets is null && DisablePriorityBoost is null && GpuPreference is null && CpuLimit is null;
+}
+
+public sealed class ForegroundBoostSettings
+{
+    public bool Enabled { get; set; }
+    public CpuPriority Priority { get; set; } = CpuPriority.AboveNormal;
+    /// <summary>Only boost processes that are at Normal priority.</summary>
+    public bool OnlyNormal { get; set; } = true;
+}
+
+public sealed class SmartTrimSettings
+{
+    public bool TrimWorkingSets { get; set; }
+    /// <summary>Only trim while physical memory load is at least this (%).</summary>
+    public double MinRamLoadPercent { get; set; } = 65;
+    /// <summary>Only trim processes using more than this (MB).</summary>
+    public int MinProcessMb { get; set; } = 196;
+    public int IntervalMinutes { get; set; } = 15;
+    public bool PurgeStandbyList { get; set; }
+    /// <summary>Purge the standby list when available memory drops below this (MB).</summary>
+    public int PurgeBelowFreeMb { get; set; } = 1024;
+    public List<string> Exclusions { get; set; } = new();
 }
 
 public sealed class ProBalanceSettings
@@ -58,6 +116,13 @@ public sealed class AppConfig
     /// <summary>Plan to go back to when no "modo jogo" process runs. Null = the plan active before.</summary>
     public string? DefaultPowerPlan { get; set; }
     public int UpdateIntervalMs { get; set; } = 1000;
+    public ForegroundBoostSettings ForegroundBoost { get; set; } = new();
+    public SmartTrimSettings SmartTrim { get; set; } = new();
+    /// <summary>"Modo desempenho": keep <see cref="PerformancePlan"/> active regardless of what runs.</summary>
+    public bool PerformanceMode { get; set; }
+    public string? PerformancePlan { get; set; }
+    /// <summary>Requested system timer resolution in 100 ns units (5000 = 0.5 ms); 0 = leave Windows alone.</summary>
+    public int TimerResolution100ns { get; set; }
     public bool CloseToTray { get; set; } = true;
     public bool ImportedFromProcessLasso { get; set; }
 
@@ -113,6 +178,43 @@ public sealed class AppConfig
         var r = RuleFor(exe);
         if (r is null) { r = new ProcessRule { Exe = exe.ToLowerInvariant() }; Rules.Add(r); }
         return r;
+    }
+}
+
+/// <summary>Finds the rule for a process: an exact executable-name rule wins, then the first matching pattern.</summary>
+public sealed class RuleMatcher
+{
+    readonly Dictionary<string, ProcessRule> _byName = new(StringComparer.OrdinalIgnoreCase);
+    readonly List<(System.Text.RegularExpressions.Regex Re, System.Text.RegularExpressions.Regex? Except, ProcessRule Rule)> _patterns = new();
+
+    public bool NeedsPaths { get; }
+
+    public RuleMatcher(IEnumerable<ProcessRule> rules)
+    {
+        foreach (var r in rules)
+        {
+            if (!r.IsPattern) { _byName.TryAdd(r.Exe, r); continue; }
+            var except = r.Except is { Count: > 0 } ex ? Wildcard("(" + string.Join(")|(", ex.Select(ToRegex)) + ")") : null;
+            _patterns.Add((Wildcard(ToRegex(r.Exe)), except, r));
+            if (r.MatchesPath) NeedsPaths = true;
+        }
+    }
+
+    static string ToRegex(string wildcard) =>
+        System.Text.RegularExpressions.Regex.Escape(wildcard.Trim()).Replace(@"\*", ".*").Replace(@"\?", ".");
+
+    static System.Text.RegularExpressions.Regex Wildcard(string body) => new("^(" + body + ")$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    public ProcessRule? Match(string name, string? path)
+    {
+        if (_byName.TryGetValue(name, out var r)) return r;
+        foreach (var (re, except, rule) in _patterns)
+        {
+            var subject = rule.MatchesPath ? path : name;
+            if (subject is not null && re.IsMatch(subject) && except?.IsMatch(name) != true) return rule;
+        }
+        return null;
     }
 }
 

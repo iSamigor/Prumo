@@ -77,6 +77,22 @@ public sealed class RuleRow : Observable
         new("Não alterar", null), new("Desligado", EfficiencyMode.Off), new("Ligado", EfficiencyMode.On),
     };
 
+    public static readonly List<Option<MemoryPriority?>> MemChoices =
+        new[] { new Option<MemoryPriority?>("Não alterar", null) }
+        .Concat(Enum.GetValues<MemoryPriority>().Reverse().Select(v => new Option<MemoryPriority?>(Names.Of(v), v))).ToList();
+    public static readonly List<Option<GpuPreference?>> GpuPrefChoices = new()
+    {
+        new("Deixar o Windows decidir", null), new("Alto desempenho (placa dedicada)", Core.GpuPreference.HighPerformance),
+        new("Economia de energia (integrada)", Core.GpuPreference.PowerSaving),
+    };
+    public static readonly List<Option<bool?>> BoostChoices = new()
+    {
+        new("Não alterar", null), new("Desligado", true), new("Ligado", false),
+    };
+
+    public List<Option<MemoryPriority?>> MemOptions => MemChoices;
+    public List<Option<GpuPreference?>> GpuPrefOptions => GpuPrefChoices;
+    public List<Option<bool?>> BoostOptions => BoostChoices;
     public List<Option<CpuPriority?>> CpuOptions => CpuChoices;
     public List<Option<IoPriority?>> IoOptions => IoChoices;
     public List<Option<GpuPriority?>> GpuOptions => GpuChoices;
@@ -91,6 +107,87 @@ public sealed class RuleRow : Observable
     }
 
     public string Exe => _rule.Exe;
+    public string Kind => _rule.MatchesPath ? "pasta (todos os programas dentro dela)" : _rule.IsPattern ? "padrão de nome" : "programa";
+
+    public Option<MemoryPriority?> Memory
+    {
+        get => MemChoices.First(o => o.Value == _rule.MemoryPriority);
+        set { _rule.MemoryPriority = value?.Value; _changed(); }
+    }
+    public Option<GpuPreference?> GpuPref
+    {
+        get => GpuPrefChoices.First(o => o.Value == _rule.GpuPreference);
+        set { _rule.GpuPreference = value?.Value; _changed(); }
+    }
+    public Option<bool?> Boost
+    {
+        get => BoostChoices.First(o => o.Value == _rule.DisablePriorityBoost);
+        set { _rule.DisablePriorityBoost = value?.Value; _changed(); }
+    }
+    public string CpuSets
+    {
+        get => _rule.CpuSets ?? "";
+        set
+        {
+            var t = value.Trim();
+            if (t.Length == 0) _rule.CpuSets = null;
+            else if (Core.Affinity.Parse(t) is var m and not 0) _rule.CpuSets = Core.Affinity.Format(m);
+            else { MessageBox.Show("CPU Sets inválido. Use algo como 2-7 ou 0,2,4-6.", "Prumo"); Raise(nameof(CpuSets)); return; }
+            Raise(nameof(CpuSets));
+            _changed();
+        }
+    }
+
+    // CPU limiter: all three fields filled = on; clearing the percentage turns it off.
+    public string LimitPercent
+    {
+        get => _rule.CpuLimit is { } l ? l.ThresholdPercent.ToString("0.#") : "";
+        set
+        {
+            var t = value.Trim().Replace(',', '.');
+            if (t.Length == 0) _rule.CpuLimit = null;
+            else if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is > 0 and <= 100)
+                (_rule.CpuLimit ??= new CpuLimit()).ThresholdPercent = v;
+            else { Raise(nameof(LimitPercent)); return; }
+            RaiseLimit(); _changed();
+        }
+    }
+    public string LimitCores
+    {
+        get => _rule.CpuLimit?.Cores.ToString() ?? "";
+        set
+        {
+            if (int.TryParse(value.Trim(), out var v) && v >= 1 && v <= Environment.ProcessorCount)
+            { (_rule.CpuLimit ??= new CpuLimit()).Cores = v; _changed(); }
+            RaiseLimit();
+        }
+    }
+    public string LimitSeconds
+    {
+        get => _rule.CpuLimit is { } l ? (l.DurationMs / 1000.0).ToString("0.#") : "";
+        set
+        {
+            var t = value.Trim().Replace(',', '.');
+            if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 1 and <= 3600)
+            { (_rule.CpuLimit ??= new CpuLimit()).DurationMs = (int)(v * 1000); _changed(); }
+            RaiseLimit();
+        }
+    }
+    public bool IsPattern => _rule.IsPattern;
+    public string ExceptText
+    {
+        get => _rule.Except is { Count: > 0 } e ? string.Join(", ", e) : "";
+        set
+        {
+            var list = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.ToLowerInvariant()).Distinct().ToList();
+            _rule.Except = list.Count > 0 ? list : null;
+            Raise(nameof(ExceptText));
+            _changed();
+        }
+    }
+
+    void RaiseLimit() { Raise(nameof(LimitPercent)); Raise(nameof(LimitCores)); Raise(nameof(LimitSeconds)); }
 
     string _running = "";
     public string Running { get => _running; set => Set(ref _running, value); }
@@ -152,13 +249,14 @@ public sealed class LogRow
     public string Text => Entry.Text;
     public string Icon => Entry.Kind switch
     {
+        EventKind.Memory => "",
         EventKind.Restrained => "", EventKind.Restored => "", EventKind.RuleApplied => "",
         EventKind.RuleFailed => "", EventKind.PowerPlan => "", _ => "",
     };
     public Brush Color => Entry.Kind switch
     {
         EventKind.Restrained => Amber, EventKind.Restored => Teal, EventKind.RuleApplied => Blue,
-        EventKind.RuleFailed => Red, EventKind.PowerPlan => Violet, _ => Gray,
+        EventKind.RuleFailed => Red, EventKind.PowerPlan => Violet, EventKind.Memory => Teal, _ => Gray,
     };
 
     static Brush Frozen(byte r, byte g, byte b) { var x = new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b)); x.Freeze(); return x; }

@@ -4,15 +4,16 @@ namespace Prumo.Core;
 
 public sealed record ProcessInfo(
     int Pid, int ParentPid, string Exe, uint SessionId, double Cpu, ulong WorkingSet,
-    int BasePriority, bool Restrained, bool HasRule, bool Foreground);
+    int BasePriority, bool Restrained, bool HasRule, bool Foreground, string? Path);
 
 public sealed record EngineSnapshot(
     DateTime Time, IReadOnlyList<ProcessInfo> Processes, double CpuTotal, SystemSample? System,
     int RestrainedCount, int RestraintsStarted, string? PowerPlan);
 
 /// <summary>
-/// Once a second: reads every process, applies the per-exe rules to new processes, runs
-/// ProBalance and switches the power plan while a "modo jogo" process runs.
+/// Once a second: reads every process, applies the rules to new processes, runs ProBalance, the
+/// foreground boost, the CPU limiter and SmartTrim, and switches the power plan for "modo jogo" /
+/// "modo desempenho".
 /// </summary>
 public sealed unsafe class Engine : IDisposable
 {
@@ -37,6 +38,9 @@ public sealed unsafe class Engine : IDisposable
         public int OriginalIo = -1;     // I/O priority before we lowered it; -1 = untouched
         public int RestoreAttempts;
         public int RuleVersion = -1, RuleAttempts;
+        public string? Path; public bool PathResolved;
+        public bool Boosted; public uint BoostOriginal, BoostClass;   // foreground boost
+        public long LimitedAt; public ulong LimitOriginal, LimitMask;  // CPU limiter
     }
 
     readonly ActivityLog _log;
@@ -52,8 +56,19 @@ public sealed unsafe class Engine : IDisposable
     int _ruleVersion;
     Guid? _planBefore;           // plan to restore once no game runs
     Guid? _planSet;              // plan we switched to
+    uint[]? _cpuSetIds;
+    uint _timerSet;
+    long _lastTrim = -1, _lastPurge = -10 * 60_000;
+
     // The UI edits Config on its own thread; the engine only reads this immutable copy, swapped on ConfigChanged.
-    sealed record View(AppConfig Cfg, Dictionary<string, Guid?> PlanIds);
+    sealed record View(AppConfig Cfg, Dictionary<string, Guid?> PlanIds, RuleMatcher Matcher)
+    {
+        public static View Of(AppConfig cfg)
+        {
+            var c = cfg.Clone();
+            return new(c, new(StringComparer.OrdinalIgnoreCase), new RuleMatcher(c.Rules));
+        }
+    }
     volatile View _view;
     AppConfig Live => _view.Cfg;
     string? _planName; long _planNameAt = -10_000;
@@ -65,7 +80,7 @@ public sealed unsafe class Engine : IDisposable
     public Engine(AppConfig config, ActivityLog log, ISystemSampler? sampler)
     {
         Config = config; _log = log; _sampler = sampler;
-        _view = new View(config.Clone(), new(StringComparer.OrdinalIgnoreCase));
+        _view = View.Of(config);
         Native.EnablePrivilege("SeIncreaseBasePriorityPrivilege");
         Native.EnablePrivilege("SeDebugPrivilege");
     }
@@ -73,6 +88,7 @@ public sealed unsafe class Engine : IDisposable
     public void Start()
     {
         _log.Add(EventKind.Info, 0, "prumo.exe", $"Gerenciamento iniciado ({Config.Rules.Count} regras, ProBalance {(Config.ProBalance.Enabled ? "ligado" : "desligado")})");
+        ApplyTimerResolution();
         _thread = new Thread(Loop) { IsBackground = true, Name = "Prumo engine", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
     }
@@ -81,8 +97,19 @@ public sealed unsafe class Engine : IDisposable
     public void ConfigChanged()
     {
         lock (_tracked) { _ruleVersion++; foreach (var t in _tracked.Values) t.RuleAttempts = 0; }
-        _view = new View(Config.Clone(), new(StringComparer.OrdinalIgnoreCase));
+        _view = View.Of(Config);
+        ApplyTimerResolution();
         Config.Save();
+    }
+
+    void ApplyTimerResolution()
+    {
+        uint want = (uint)Math.Max(0, Live.TimerResolution100ns);
+        if (want == _timerSet) return;
+        if (_timerSet != 0) Native.NtSetTimerResolution(_timerSet, false, out _);
+        if (want != 0 && Native.NtSetTimerResolution(want, true, out var cur) == 0)
+            _log.Add(EventKind.Info, 0, "prumo.exe", $"Resolução do timer pedida: {want / 10_000.0:0.###} ms (atual {cur / 10_000.0:0.###} ms)");
+        _timerSet = want;
     }
 
     void Loop()
@@ -113,8 +140,13 @@ public sealed unsafe class Engine : IDisposable
         var seen = new HashSet<int>();
         var list = new List<ProcessInfo>(procs.Count);
         int started = 0, restrained = 0;
-        var cfg = Live;
+        var view = _view;
+        var cfg = view.Cfg;
         var pb = cfg.ProBalance;
+        var planRules = new List<ProcessRule>();
+
+        SystemSample? sys = null;
+        try { sys = _sampler?.Sample(); } catch { }
 
         lock (_tracked)
         {
@@ -129,18 +161,30 @@ public sealed unsafe class Engine : IDisposable
                 t.LastCpuTime = p.CpuTime;
                 if (p.Pid != 0) totalCpu += t.Cpu;
 
-                var rule = cfg.RuleFor(p.Name);
+                // Paths cost an OpenProcess, so they are only read (once per process) when a rule matches on paths.
+                if (view.Matcher.NeedsPaths && !t.PathResolved && p.Pid > 4)
+                {
+                    t.Path = PathOf(p.Pid);
+                    t.PathResolved = true;
+                }
+                var rule = view.Matcher.Match(p.Name, t.Path);
                 if (rule is not null && t.RuleVersion != _ruleVersion && t.RuleAttempts < 5 && p.Pid > 4)
                     ApplyRule(p.Pid, t, rule);
+                if (rule?.PowerPlan is not null) planRules.Add(rule);
 
                 bool fg = p.Pid == fgPid;
+                if (p.Pid > 4 && p.Pid != _selfPid)
+                {
+                    ForegroundBoost(p, t, rule, fg, cfg.ForegroundBoost);
+                    CpuLimiter(p, t, rule, now);
+                }
                 if (!pb.Enabled && t.RestrainedAt != 0) Restore(p.Pid, t, "o ProBalance foi desligado");
                 else if (pb.Enabled && p.Pid > 4 && p.Pid != _selfPid)
                     started += ProBalance(p, t, rule, now, fg || (pb.ExcludeChildrenOfForeground && IsDescendant(p.Pid, fgPid, parents)));
                 if (t.RestrainedAt != 0) restrained++;
 
                 list.Add(new ProcessInfo(p.Pid, p.ParentPid, p.Name, p.SessionId, t.Cpu, p.WorkingSet,
-                    p.BasePriority, t.RestrainedAt != 0, rule is not null, fg));
+                    p.BasePriority, t.RestrainedAt != 0, rule is not null, fg, t.Path));
             }
 
             foreach (var pid in _tracked.Keys.Where(k => !seen.Contains(k)).ToList())
@@ -151,13 +195,11 @@ public sealed unsafe class Engine : IDisposable
             }
         }
 
-        // Second pass of ProBalance needs the total, which is only known now; restraint uses last tick's total.
+        // Restraint decisions use the previous tick's total; the new one is only known now.
         _lastTotal = Math.Min(100, totalCpu);
 
-        UpdatePowerPlan(procs);
-
-        SystemSample? sys = null;
-        try { sys = _sampler?.Sample(); } catch { }
+        SmartTrim(procs, fgPid, parents, sys, now, view);
+        UpdatePowerPlan(planRules);
 
         if (now - _planNameAt > 5000) { _planName = PowerPlans.ActiveName(); _planNameAt = now; }
         var snap = new EngineSnapshot(DateTime.Now, list, sys?.CpuTotal ?? _lastTotal, sys, restrained, started, _planName);
@@ -289,6 +331,26 @@ public sealed unsafe class Engine : IDisposable
                 (Native.SetProcessInformation(h, Native.ProcessPowerThrottling, ref st, sizeof(Native.PROCESS_POWER_THROTTLING_STATE)) ? done : failed)
                     .Add("modo de eficiência " + (eff == EfficiencyMode.On ? "ligado" : "desligado"));
             }
+            if (rule.MemoryPriority is { } mem)
+            {
+                uint v = (uint)mem;
+                (Native.SetProcessInformation(h, Native.ProcessMemoryPriority, ref v, 4) ? done : failed).Add("memória " + Names.Of(mem));
+            }
+            if (rule.CpuSets is { } setsText && Affinity.Parse(setsText) is var setMask and not 0)
+            {
+                _cpuSetIds ??= Native.CpuSetIds();
+                var ids = Enumerable.Range(0, Math.Min(64, _cpuSetIds.Length))
+                    .Where(i => (setMask & (1UL << i)) != 0).Select(i => _cpuSetIds[i]).ToArray();
+                (ids.Length > 0 && Native.SetProcessDefaultCpuSets(h, ids, (uint)ids.Length) ? done : failed).Add("CPU Sets " + setsText);
+            }
+            if (rule.DisablePriorityBoost is { } noBoost)
+                (Native.SetProcessPriorityBoost(h, noBoost) ? done : failed).Add(noBoost ? "boost de prioridade desligado" : "boost de prioridade ligado");
+            if (rule.GpuPreference is { } pref)
+            {
+                var path = t.Path ?? Native.ImagePath(h);
+                (path is not null && SetGpuPreference(path, pref) ? done : failed)
+                    .Add("GPU preferida " + (pref == GpuPreference.HighPerformance ? "alto desempenho" : "economia de energia"));
+            }
         }
         finally { Native.CloseHandle(h); }
 
@@ -297,6 +359,24 @@ public sealed unsafe class Engine : IDisposable
             _log.Add(EventKind.RuleApplied, pid, t.Exe, "Regra aplicada: " + string.Join(", ", done));
         if (failed.Count > 0 && t.RuleAttempts == 5)
             _log.Add(EventKind.RuleFailed, pid, t.Exe, "Falhou: " + string.Join(", ", failed));
+    }
+
+    /// <summary>Same setting as Windows' Settings &gt; Display &gt; Graphics; DirectX reads it when the program starts.</summary>
+    static bool SetGpuPreference(string exePath, GpuPreference pref)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\DirectX\UserGpuPreferences");
+            // The value holds several "Name=Value;" pairs (Windows also keeps AppStatus there): change only ours.
+            var old = key.GetValue(exePath) as string ?? "";
+            var pairs = old.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Where(p => !p.StartsWith("GpuPreference=", StringComparison.OrdinalIgnoreCase)).ToList();
+            pairs.Add($"GpuPreference={(int)pref}");
+            var value = string.Join(";", pairs) + ";";
+            if (old != value) key.SetValue(exePath, value);
+            return true;
+        }
+        catch { return false; }
     }
 
     static uint ToClass(CpuPriority p) => p switch
@@ -310,33 +390,150 @@ public sealed unsafe class Engine : IDisposable
         _ => NORMAL,
     };
 
+    // -------------------------------------------------------- foreground boost
+
+    void ForegroundBoost(RawProcess p, Tracked t, ProcessRule? rule, bool fg, ForegroundBoostSettings fb)
+    {
+        if (t.Boosted && (!fg || !fb.Enabled))
+        {
+            var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+            if (h != 0)
+            {
+                if (Native.GetPriorityClass(h) == t.BoostClass) Native.SetPriorityClass(h, t.BoostOriginal);
+                Native.CloseHandle(h);
+            }
+            t.Boosted = false;
+            return;
+        }
+        if (!fb.Enabled || !fg || t.Boosted || t.RestrainedAt != 0 || rule?.CpuPriority is not null || Untouchable.Contains(p.Name)) return;
+        if (fb.OnlyNormal && p.BasePriority != 8) return;
+
+        var hh = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+        if (hh == 0) return;
+        try
+        {
+            var cls = Native.GetPriorityClass(hh);
+            var target = ToClass(fb.Priority);
+            if (cls == 0 || cls == target || (fb.OnlyNormal && cls != NORMAL)) return;
+            if (Native.SetPriorityClass(hh, target)) { t.Boosted = true; t.BoostOriginal = cls; t.BoostClass = target; }
+        }
+        finally { Native.CloseHandle(hh); }
+    }
+
+    // ------------------------------------------------------------ CPU limiter
+
+    void CpuLimiter(RawProcess p, Tracked t, ProcessRule? rule, long now)
+    {
+        if (t.LimitedAt != 0)
+        {
+            if (now - t.LimitedAt < (rule?.CpuLimit?.DurationMs ?? 0)) return;
+            var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+            if (h != 0)
+            {
+                if (Native.GetProcessAffinityMask(h, out var cur, out _) && cur == (nuint)t.LimitMask)
+                    Native.SetProcessAffinityMask(h, (nuint)t.LimitOriginal);
+                Native.CloseHandle(h);
+            }
+            t.LimitedAt = 0;
+            _log.Add(EventKind.Restored, p.Pid, p.Name, "Limitador de CPU terminou: núcleos originais devolvidos");
+            return;
+        }
+        if (rule?.CpuLimit is not { } lim || lim.Cores <= 0 || t.Cpu < lim.ThresholdPercent) return;
+
+        var hh = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+        if (hh == 0) return;
+        try
+        {
+            if (!Native.GetProcessAffinityMask(hh, out var cur, out _)) return;
+            ulong mask = 0; int n = 0;
+            // Keep the highest-numbered CPUs it already had, leaving CPU 0 (interrupts, the OS) for last.
+            for (int i = 63; i >= 0 && n < lim.Cores; i--)
+                if (((ulong)cur & (1UL << i)) != 0) { mask |= 1UL << i; n++; }
+            if (mask == 0 || mask == (ulong)cur || !Native.SetProcessAffinityMask(hh, (nuint)mask)) return;
+            t.LimitedAt = now; t.LimitOriginal = cur; t.LimitMask = mask;
+            _log.Add(EventKind.Restrained, p.Pid, p.Name,
+                $"Limitador de CPU: {t.Cpu:0}% → restrito às CPUs {Affinity.Format(mask)} por {lim.DurationMs / 1000.0:0.#} s");
+        }
+        finally { Native.CloseHandle(hh); }
+    }
+
+    // --------------------------------------------------------------- SmartTrim
+
+    void SmartTrim(List<RawProcess> procs, int fgPid, Dictionary<int, (int Parent, long Create)> parents,
+                   SystemSample? sys, long now, View view)
+    {
+        var st = view.Cfg.SmartTrim;
+        if (_lastTrim < 0) _lastTrim = now;   // first trim one interval after start, not at boot
+
+        if (st.TrimWorkingSets && sys is not null && sys.MemoryLoad >= st.MinRamLoadPercent &&
+            now - _lastTrim >= Math.Max(1, st.IntervalMinutes) * 60_000L)
+        {
+            _lastTrim = now;
+            int count = 0; ulong trimmed = 0;
+            ulong min = (ulong)Math.Max(1, st.MinProcessMb) << 20;
+            foreach (var p in procs)
+            {
+                if (p.Pid <= 4 || p.Pid == _selfPid || p.SessionId == 0 || p.WorkingSet < min) continue;
+                if (p.Pid == fgPid || IsDescendant(p.Pid, fgPid, parents) || Untouchable.Contains(p.Name)) continue;
+                if (st.Exclusions.Contains(p.Name, StringComparer.OrdinalIgnoreCase)) continue;
+                // Programs with a priority rule are the ones the user cares about (games): never page them out.
+                string? path;
+                lock (_tracked) path = _tracked.TryGetValue(p.Pid, out var t) ? t.Path : null;
+                if (view.Matcher.Match(p.Name, path) is { CpuPriority: not null }) continue;
+                if (MemoryTools.TrimWorkingSet(p.Pid)) { count++; trimmed += p.WorkingSet; }
+            }
+            if (count > 0)
+                _log.Add(EventKind.Memory, 0, "prumo.exe", $"SmartTrim: memória de {count} processos em segundo plano liberada (~{trimmed >> 20} MB)");
+        }
+
+        if (st.PurgeStandbyList && now - _lastPurge >= 5 * 60_000)
+        {
+            ulong avail = MemoryTools.AvailableBytes();
+            if (avail > 0 && avail < ((ulong)Math.Max(1, st.PurgeBelowFreeMb) << 20))
+            {
+                _lastPurge = now;
+                ulong standby = MemoryTools.StandbyBytes();
+                if (MemoryTools.PurgeStandbyList())
+                    _log.Add(EventKind.Memory, 0, "prumo.exe", $"Lista de espera limpa (~{standby >> 20} MB): só {avail >> 20} MB livres");
+            }
+        }
+    }
+
     // ------------------------------------------------------------ power plan
 
-    void UpdatePowerPlan(List<RawProcess> procs)
+    void UpdatePowerPlan(List<ProcessRule> running)
     {
         Guid? want = null;
         string? who = null;
         var view = _view;
-        foreach (var r in view.Cfg.Rules)
+        Guid? Resolve(string name)
         {
-            if (r.PowerPlan is null || !procs.Any(p => string.Equals(p.Name, r.Exe, StringComparison.OrdinalIgnoreCase))) continue;
-            if (!view.PlanIds.TryGetValue(r.PowerPlan, out var id)) view.PlanIds[r.PowerPlan] = id = PowerPlans.Find(r.PowerPlan);
-            if (id is not null) { want = id; who = r.Exe; break; }
+            if (!view.PlanIds.TryGetValue(name, out var id)) view.PlanIds[name] = id = PowerPlans.Find(name);
+            return id;
         }
+
+        if (view.Cfg.PerformanceMode && view.Cfg.PerformancePlan is { } perf && Resolve(perf) is { } perfId)
+        {
+            want = perfId; who = "modo desempenho";
+        }
+        else
+            foreach (var r in running)
+                if (Resolve(r.PowerPlan!) is { } id) { want = id; who = r.Exe; break; }
 
         if (want is not null && _planSet != want)
         {
             var active = PowerPlans.Active();
             _planBefore ??= active;
             if (active != want && PowerPlans.SetActive(want.Value))
-                _log.Add(EventKind.PowerPlan, 0, who!, "Modo jogo: plano de energia " + PlanName(want.Value));
+                _log.Add(EventKind.PowerPlan, 0, who!,
+                    (who == "modo desempenho" ? "Modo desempenho" : "Modo jogo") + ": plano de energia " + PlanName(want.Value));
             _planSet = want;
         }
         else if (want is null && _planSet is not null)
         {
             var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null && PowerPlans.Active() != back && PowerPlans.SetActive(back.Value))
-                _log.Add(EventKind.PowerPlan, 0, "prumo.exe", "Modo jogo terminou: plano de energia " + PlanName(back.Value));
+                _log.Add(EventKind.PowerPlan, 0, "prumo.exe", "Modo jogo/desempenho terminou: plano de energia " + PlanName(back.Value));
             _planSet = null; _planBefore = null;
         }
     }
@@ -426,12 +623,22 @@ public sealed unsafe class Engine : IDisposable
         _thread?.Join(3000);
         lock (_tracked)
             foreach (var (pid, t) in _tracked)
+            {
                 if (t.RestrainedAt != 0) Restore(pid, t, "Prumo foi fechado");
+                if (!t.Boosted && t.LimitedAt == 0) continue;
+                var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (h == 0) continue;
+                if (t.Boosted && Native.GetPriorityClass(h) == t.BoostClass) Native.SetPriorityClass(h, t.BoostOriginal);
+                if (t.LimitedAt != 0 && Native.GetProcessAffinityMask(h, out var cur, out _) && cur == (nuint)t.LimitMask)
+                    Native.SetProcessAffinityMask(h, (nuint)t.LimitOriginal);
+                Native.CloseHandle(h);
+            }
         if (_planSet is not null)
         {
             var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null) PowerPlans.SetActive(back.Value);
         }
+        if (_timerSet != 0) Native.NtSetTimerResolution(_timerSet, false, out _);
         _sampler?.Dispose();
     }
 }
@@ -451,6 +658,11 @@ public static class Names
     {
         GpuPriority.Idle => "Ociosa", GpuPriority.BelowNormal => "Abaixo do normal", GpuPriority.Normal => "Normal",
         GpuPriority.AboveNormal => "Acima do normal", GpuPriority.High => "Alta", GpuPriority.Realtime => "Tempo real", _ => p.ToString(),
+    };
+    public static string Of(MemoryPriority p) => p switch
+    {
+        MemoryPriority.VeryLow => "Muito baixa", MemoryPriority.Low => "Baixa", MemoryPriority.Medium => "Média",
+        MemoryPriority.BelowNormal => "Abaixo do normal", MemoryPriority.Normal => "Normal", _ => p.ToString(),
     };
     public static string OfBase(int basePriority) => basePriority switch
     {

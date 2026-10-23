@@ -50,6 +50,9 @@
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="ProBalance">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9F5;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="ProBalance" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Performance">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xEC4A;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Desempenho" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                    </RadioButton>
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Log">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE81C;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Registro" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
@@ -261,9 +264,12 @@
                         <TextBlock Text="Aplicadas automaticamente sempre que o programa abrir" Style="{StaticResource Muted}" FontSize="13" Margin="0,4,0,0"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                        <Grid Width="220">
+                        <Button x:Name="AddGamesButton" Margin="0,0,8,0" Click="AddGames_Click" ToolTip="Uma regra por biblioteca de jogos (Steam, Epic, Riot, Xbox...): vale para todo jogo instalado nela">
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7FC;" Style="{StaticResource Icon}" FontSize="13"/><TextBlock Text="Adicionar jogos" Margin="8,0,0,0"/></StackPanel>
+                        </Button>
+                        <Grid Width="240">
                             <TextBox x:Name="NewRuleExe" KeyDown="NewRuleExe_KeyDown"/>
-                            <TextBlock x:Name="NewRuleHint" Text="exemplo.exe" Style="{StaticResource Muted}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <TextBlock x:Name="NewRuleHint" Text="programa.exe ou C:\Pasta\*" Style="{StaticResource Muted}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </Grid>
                         <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="AddRule_Click">
                             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" Style="{StaticResource Icon}" FontSize="12" Foreground="#06231F"/><TextBlock Text="Nova regra" Margin="8,0,0,0" Foreground="#06231F"/></StackPanel>
@@ -282,14 +288,15 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <DockPanel Margin="0,0,0,12">
                                                 <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource AccentSoft}">
                                                     <TextBlock Text="&#xE7FC;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}" HorizontalAlignment="Center"/>
                                                 </Border>
                                                 <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Exe}" Style="{StaticResource H2}"/>
-                                                    <TextBlock Text="{Binding Running}" Style="{StaticResource Muted}"/>
+                                                    <TextBlock Text="{Binding Exe}" Style="{StaticResource H2}" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Style="{StaticResource Muted}"><Run Text="{Binding Kind, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Running, Mode=OneWay}"/></TextBlock>
                                                 </StackPanel>
                                                 <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Click="RemoveRule_Click" Tag="{Binding}" ToolTip="Remover regra">
                                                     <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedBrush}" FontSize="14"/>
@@ -309,8 +316,24 @@
                                                     <ComboBox ItemsSource="{Binding GpuOptions}" SelectedItem="{Binding Gpu}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
+                                                    <TextBlock Text="Prioridade de memória" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <ComboBox ItemsSource="{Binding MemOptions}" SelectedItem="{Binding Memory}" ToolTip="Páginas de memória com prioridade baixa saem da RAM primeiro quando ela aperta"/>
+                                                </StackPanel>
+                                                <StackPanel Margin="6,0,6,10">
+                                                    <TextBlock Text="GPU preferida" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <ComboBox ItemsSource="{Binding GpuPrefOptions}" SelectedItem="{Binding GpuPref}" ToolTip="Vale a partir da próxima vez que o programa abrir"/>
+                                                </StackPanel>
+                                                <StackPanel Margin="6,0,6,10">
                                                     <TextBlock Text="Afinidade (CPUs)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
-                                                    <TextBox Text="{Binding Affinity, UpdateSourceTrigger=LostFocus}" ToolTip="Ex.: 1-7 ou 0,2,4-6. Vazio = todas"/>
+                                                    <TextBox Text="{Binding Affinity, UpdateSourceTrigger=LostFocus}" ToolTip="Só roda nessas CPUs. Ex.: 1-7 ou 0,2,4-6. Vazio = todas"/>
+                                                </StackPanel>
+                                                <StackPanel Margin="6,0,6,10">
+                                                    <TextBlock Text="CPU Sets (preferência)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <TextBox Text="{Binding CpuSets, UpdateSourceTrigger=LostFocus}" ToolTip="O Windows prefere essas CPUs, mas pode usar outras se precisar. Ex.: 2-7"/>
+                                                </StackPanel>
+                                                <StackPanel Margin="6,0,6,10">
+                                                    <TextBlock Text="Boost dinâmico de prioridade" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <ComboBox ItemsSource="{Binding BoostOptions}" SelectedItem="{Binding Boost}" ToolTip="Desligar evita picos de prioridade das threads; alguns jogos ficam mais estáveis"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0">
                                                     <TextBlock Text="Modo de eficiência" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
@@ -320,10 +343,34 @@
                                                     <TextBlock Text="Modo jogo (plano de energia)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                                                     <ComboBox ItemsSource="{Binding PlanOptions}" SelectedItem="{Binding Plan}"/>
                                                 </StackPanel>
+                                                <StackPanel Margin="6,0,6,0">
+                                                    <TextBlock Text="Limitador: % · núcleos · seg." Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <Grid ToolTip="Quando passar de X% de CPU, fica restrito a N núcleos por T segundos. Deixe o % vazio para desligar.">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox Text="{Binding LimitPercent, UpdateSourceTrigger=LostFocus}"/>
+                                                        <TextBox Grid.Column="2" Text="{Binding LimitCores, UpdateSourceTrigger=LostFocus}"/>
+                                                        <TextBox Grid.Column="4" Text="{Binding LimitSeconds, UpdateSourceTrigger=LostFocus}"/>
+                                                    </Grid>
+                                                </StackPanel>
                                                 <StackPanel Margin="6,0,6,0" VerticalAlignment="Bottom">
                                                     <CheckBox Style="{StaticResource Switch}" Content="Excluir do ProBalance" IsChecked="{Binding Excluded}" Margin="0,0,0,6"/>
                                                 </StackPanel>
                                             </UniformGrid>
+                                            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsPattern}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <TextBlock Text="Exceto (programas que não são jogos; separados por vírgula, * vale)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                <TextBox Text="{Binding ExceptText, UpdateSourceTrigger=LostFocus}"/>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -396,6 +443,76 @@
                             <TextBlock Text="Como restringir" Style="{StaticResource H2}" Margin="0,0,0,10"/>
                             <CheckBox x:Name="PbIdle" Style="{StaticResource Switch}" Content="Baixar para Ociosa em vez de Abaixo do normal" Click="PbChanged" Margin="0,6"/>
                             <CheckBox x:Name="PbIo" Style="{StaticResource Switch}" Content="Baixar também a prioridade de I/O" Click="PbChanged" Margin="0,6"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== Performance ===== -->
+            <ScrollViewer x:Name="PagePerformance" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="28,0,28,24" MaxWidth="820" HorizontalAlignment="Left">
+                    <TextBlock Text="Desempenho" Style="{StaticResource H1}"/>
+                    <TextBlock Text="Ajustes globais que valem para o sistema todo. As regras por programa ficam em Regras." Style="{StaticResource Muted}" FontSize="13" Margin="0,4,0,18" TextWrapping="Wrap"/>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <CheckBox x:Name="PerfMode" Style="{StaticResource Switch}" Click="PerfChanged">
+                                <StackPanel>
+                                    <TextBlock Text="Modo desempenho" Style="{StaticResource H2}"/>
+                                    <TextBlock Text="Mantém o plano de energia abaixo ativo o tempo todo, não só quando um jogo abre" Style="{StaticResource Muted}"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <ComboBox x:Name="PerfPlan" Width="320" HorizontalAlignment="Left" Margin="0,12,0,0" SelectionChanged="PerfPlan_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <CheckBox x:Name="FgBoost" Style="{StaticResource Switch}" Click="PerfChanged">
+                                <StackPanel>
+                                    <TextBlock Text="Prioridade extra para o programa em foco" Style="{StaticResource H2}"/>
+                                    <TextBlock Text="Sobe a prioridade da janela ativa e devolve quando você troca de janela" Style="{StaticResource Muted}"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <ComboBox x:Name="FgBoostPriority" Width="200" SelectionChanged="PerfChanged"/>
+                                <CheckBox x:Name="FgBoostOnlyNormal" Style="{StaticResource Switch}" Content="Só se estiver em Normal" Margin="24,0,0,0" Click="PerfChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="SmartTrim (memória)" Style="{StaticResource H2}"/>
+                            <TextBlock Text="Libera RAM de programas em segundo plano quando a memória aperta. Nunca mexe no programa em foco nem em programas com regra de prioridade." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,12"/>
+                            <CheckBox x:Name="TrimOn" Style="{StaticResource Switch}" Content="Liberar memória de programas em segundo plano" Click="PerfChanged" Margin="0,4"/>
+                            <UniformGrid Columns="3" Margin="-6,8,-6,8">
+                                <StackPanel Margin="6,0">
+                                    <TextBlock Text="Quando a RAM passar de (%)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TrimLoad" LostFocus="PerfChanged"/>
+                                </StackPanel>
+                                <StackPanel Margin="6,0">
+                                    <TextBlock Text="Programas acima de (MB)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TrimMinMb" LostFocus="PerfChanged"/>
+                                </StackPanel>
+                                <StackPanel Margin="6,0">
+                                    <TextBlock Text="No máximo a cada (minutos)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TrimInterval" LostFocus="PerfChanged"/>
+                                </StackPanel>
+                            </UniformGrid>
+                            <CheckBox x:Name="PurgeOn" Style="{StaticResource Switch}" Content="Limpar a lista de espera (cache) quando a RAM livre acabar" Click="PerfChanged" Margin="0,8,0,4"/>
+                            <StackPanel Margin="0,8,0,0" Width="250" HorizontalAlignment="Left">
+                                <TextBlock Text="Quando sobrar menos de (MB livres)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="PurgeBelow" LostFocus="PerfChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Resolução do timer do Windows" Style="{StaticResource H2}"/>
+                            <TextBlock Text="Um timer mais fino deixa esperas curtas mais precisas. No Windows 11 o efeito é pequeno e vale só enquanto o Prumo estiver aberto." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,12"/>
+                            <ComboBox x:Name="TimerRes" Width="250" HorizontalAlignment="Left" SelectionChanged="PerfChanged"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -58,6 +58,7 @@ public partial class MainWindow : Window
         engine.Updated += s => Dispatcher.BeginInvoke(() => OnSnapshot(s));
 
         LoadProBalance();
+        LoadPerformance();
         LoadRules();
         LoadSettings();
 
@@ -94,6 +95,8 @@ public partial class MainWindow : Window
         PageRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
         PageProBalance.Visibility = tag == "ProBalance" ? Visibility.Visible : Visibility.Collapsed;
         PageLog.Visibility = tag == "Log" ? Visibility.Visible : Visibility.Collapsed;
+        PagePerformance.Visibility = tag == "Performance" ? Visibility.Visible : Visibility.Collapsed;
+        if (tag == "Performance") LoadPerformance();
         PageSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Settings") LoadSettings();
     }
@@ -263,8 +266,28 @@ public partial class MainWindow : Window
                 string.Equals(rule?.PowerPlan, plan.Name, StringComparison.OrdinalIgnoreCase)));
         ProcMenu.Items.Add(game);
 
+        var mem = Item("Prioridade de memória sempre");
+        mem.Items.Add(Item("Não alterar", () => EditRule(exe, r => r.MemoryPriority = null), rule?.MemoryPriority is null));
+        foreach (var p in Enum.GetValues<MemoryPriority>().Reverse())
+            mem.Items.Add(Item(Names.Of(p), () => EditRule(exe, r => r.MemoryPriority = p), rule?.MemoryPriority == p));
+        ProcMenu.Items.Add(mem);
+
+        var pref = Item("GPU preferida");
+        foreach (var o in RuleRow.GpuPrefChoices)
+            pref.Items.Add(Item(o.Label, () => EditRule(exe, r => r.GpuPreference = o.Value), rule?.GpuPreference == o.Value));
+        ProcMenu.Items.Add(pref);
+
         ProcMenu.Items.Add(Item("Excluir do ProBalance", () => EditRule(exe, r => r.ProBalanceExcluded = !r.ProBalanceExcluded),
             rule?.ProBalanceExcluded == true));
+
+        ProcMenu.Items.Add(Item("Tratar como jogo (regra para a pasta dele)", () =>
+        {
+            var path = Engine.PathOf(row.Pid);
+            if (path is null) { Toast("Não consegui ler a pasta de " + exe); return; }
+            var pattern = Path.GetDirectoryName(path) + @"\*";
+            EditRule(pattern, ApplyGamePreset);
+            _log.Add(EventKind.Info, 0, "prumo.exe", "Regra de jogo criada para " + pattern);
+        }));
 
         ProcMenu.Items.Add(new Separator());
         ProcMenu.Items.Add(Item("Abrir local do arquivo", () =>
@@ -321,10 +344,14 @@ public partial class MainWindow : Window
 
     void UpdateRuleRunning(EngineSnapshot s)
     {
+        var matcher = new RuleMatcher(_rules.Select(r => r.Rule));
+        var counts = new Dictionary<ProcessRule, int>();
+        foreach (var p in s.Processes)
+            if (matcher.Match(p.Exe, p.Path) is { } m) counts[m] = counts.GetValueOrDefault(m) + 1;
         foreach (var r in _rules)
         {
-            int n = s.Processes.Count(p => string.Equals(p.Exe, r.Exe, StringComparison.OrdinalIgnoreCase));
-            r.Running = n == 0 ? "não está rodando" : n == 1 ? "rodando agora" : $"{n} instâncias rodando";
+            int n = counts.GetValueOrDefault(r.Rule);
+            r.Running = n == 0 ? "nada rodando agora" : n == 1 ? "1 processo rodando" : $"{n} processos rodando";
         }
     }
 
@@ -332,7 +359,10 @@ public partial class MainWindow : Window
     {
         var exe = NewRuleExe.Text.Trim();
         if (exe.Length == 0) { NewRuleExe.Focus(); return; }
-        if (!exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) exe += ".exe";
+        exe = exe.Trim('"');
+        // A folder means "every program inside it"; a bare name means an executable.
+        if (Directory.Exists(exe)) exe = exe.TrimEnd('\\') + @"\*";
+        else if (!exe.Contains('*') && !exe.Contains('\\') && !exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) exe += ".exe";
         _engine.Config.GetOrAddRule(exe);
         _engine.ConfigChanged();
         NewRuleExe.Text = "";
@@ -400,6 +430,115 @@ public partial class MainWindow : Window
     {
         var t = box.Text.Trim().Replace(',', '.');
         return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, min, max) : fallback;
+    }
+
+    // ---------------------------------------------------------- performance
+
+    static readonly (string Label, int Value)[] TimerChoices =
+        { ("Padrão do Windows", 0), ("1 ms", 10_000), ("0,5 ms", 5_000) };
+
+    void LoadPerformance()
+    {
+        _loading = true;
+        var c = _engine.Config;
+        PerfMode.IsChecked = c.PerformanceMode;
+        var plans = PowerPlans.List().Select(p => new Option<string>(p.Name, p.Name)).ToList();
+        PerfPlan.ItemsSource = plans;
+        PerfPlan.SelectedItem = plans.FirstOrDefault(p => p.Value == c.PerformancePlan)
+            ?? plans.FirstOrDefault(p => p.Value!.Contains("Highest", StringComparison.OrdinalIgnoreCase) || p.Value!.Contains("Ultimate", StringComparison.OrdinalIgnoreCase))
+            ?? plans.FirstOrDefault();
+
+        FgBoost.IsChecked = c.ForegroundBoost.Enabled;
+        var prios = new[] { CpuPriority.AboveNormal, CpuPriority.High }.Select(p => new Option<CpuPriority?>(Names.Of(p), p)).ToList();
+        FgBoostPriority.ItemsSource = prios;
+        FgBoostPriority.SelectedItem = prios.FirstOrDefault(p => p.Value == c.ForegroundBoost.Priority) ?? prios[0];
+        FgBoostOnlyNormal.IsChecked = c.ForegroundBoost.OnlyNormal;
+
+        var st = c.SmartTrim;
+        TrimOn.IsChecked = st.TrimWorkingSets;
+        TrimLoad.Text = st.MinRamLoadPercent.ToString(CultureInfo.CurrentCulture);
+        TrimMinMb.Text = st.MinProcessMb.ToString();
+        TrimInterval.Text = st.IntervalMinutes.ToString();
+        PurgeOn.IsChecked = st.PurgeStandbyList;
+        PurgeBelow.Text = st.PurgeBelowFreeMb.ToString();
+
+        TimerRes.ItemsSource = TimerChoices.Select(t => t.Label).ToList();
+        int idx = Array.FindIndex(TimerChoices, t => t.Value == c.TimerResolution100ns);
+        TimerRes.SelectedIndex = idx < 0 ? 0 : idx;
+        _loading = false;
+    }
+
+    void PerfPlan_Changed(object sender, SelectionChangedEventArgs e) => PerfChanged(sender, e);
+
+    void PerfChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var c = _engine.Config;
+        c.PerformanceMode = PerfMode.IsChecked == true;
+        c.PerformancePlan = (PerfPlan.SelectedItem as Option<string>)?.Value;
+        c.ForegroundBoost.Enabled = FgBoost.IsChecked == true;
+        c.ForegroundBoost.Priority = (FgBoostPriority.SelectedItem as Option<CpuPriority?>)?.Value ?? CpuPriority.AboveNormal;
+        c.ForegroundBoost.OnlyNormal = FgBoostOnlyNormal.IsChecked == true;
+        var st = c.SmartTrim;
+        st.TrimWorkingSets = TrimOn.IsChecked == true;
+        st.MinRamLoadPercent = Num(TrimLoad, st.MinRamLoadPercent, 1, 100);
+        st.MinProcessMb = (int)Num(TrimMinMb, st.MinProcessMb, 1, 65_536);
+        st.IntervalMinutes = (int)Num(TrimInterval, st.IntervalMinutes, 1, 1440);
+        st.PurgeStandbyList = PurgeOn.IsChecked == true;
+        st.PurgeBelowFreeMb = (int)Num(PurgeBelow, st.PurgeBelowFreeMb, 64, 65_536);
+        c.TimerResolution100ns = TimerRes.SelectedIndex is >= 0 and var i && i < TimerChoices.Length ? TimerChoices[i].Value : 0;
+        _engine.ConfigChanged();
+        LoadPerformance();
+    }
+
+    /// <summary>The settings a game folder rule gets: what Process Lasso users usually set for games.</summary>
+    public static void ApplyGamePreset(ProcessRule r)
+    {
+        r.CpuPriority = CpuPriority.High;
+        r.IoPriority = IoPriority.High;
+        r.GpuPriority = GpuPriority.High;
+        r.GpuPreference = GpuPreference.HighPerformance;
+        r.Efficiency = EfficiencyMode.Off;
+        r.ProBalanceExcluded = true;
+        if (r.IsPattern) r.Except ??= ProcessRule.NotGames.ToList();
+    }
+
+    void AddGames_Click(object sender, RoutedEventArgs e)
+    {
+        var libs = GameLibraries.Find();
+        var menu = new ContextMenu { PlacementTarget = AddGamesButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        if (libs.Count == 0)
+            menu.Items.Add(new MenuItem { Header = "Nenhuma biblioteca de jogos encontrada", IsEnabled = false });
+        else
+        {
+            var all = new MenuItem { Header = $"Todas as bibliotecas ({libs.Count})" };
+            all.Click += (_, _) => AddGameRules(libs);
+            menu.Items.Add(all);
+            menu.Items.Add(new Separator());
+            foreach (var lib in libs)
+            {
+                var exists = _engine.Config.RuleFor(lib.Path + @"\*") is not null;
+                var item = new MenuItem { Header = $"{lib.Launcher}  ·  {lib.Path}", IsChecked = exists };
+                item.Click += (_, _) => AddGameRules(new[] { lib });
+                menu.Items.Add(item);
+            }
+        }
+        menu.IsOpen = true;
+    }
+
+    void AddGameRules(IEnumerable<GameLibrary> libs)
+    {
+        int added = 0;
+        foreach (var lib in libs)
+        {
+            var pattern = lib.Path + @"\*";
+            if (_engine.Config.RuleFor(pattern) is not null) continue;
+            ApplyGamePreset(_engine.Config.GetOrAddRule(pattern));
+            added++;
+        }
+        _engine.ConfigChanged();
+        LoadRules();
+        _log.Add(EventKind.Info, 0, "prumo.exe", $"{added} regra(s) de biblioteca de jogos criada(s)");
     }
 
     // ------------------------------------------------------------------ log

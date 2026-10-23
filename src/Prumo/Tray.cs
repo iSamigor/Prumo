@@ -26,9 +26,15 @@ public sealed class Tray : IDisposable
         menu.Items.Add("Abrir o Prumo", null, (_, _) => _open());
         _pbItem = new Forms.ToolStripMenuItem("ProBalance ligado", null, (_, _) => ToggleProBalance()) { Checked = engine.Config.ProBalance.Enabled };
         menu.Items.Add(_pbItem);
+        var perfItem = new Forms.ToolStripMenuItem("Modo desempenho", null, (_, _) => TogglePerformance());
+        menu.Items.Add(perfItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Sair", null, (_, _) => _exit());
-        menu.Opening += (_, _) => _pbItem.Checked = _engine.Config.ProBalance.Enabled;
+        menu.Opening += (_, _) =>
+        {
+            _pbItem.Checked = _engine.Config.ProBalance.Enabled;
+            perfItem.Checked = _engine.Config.PerformanceMode;
+        };
         foreach (Forms.ToolStripItem i in menu.Items) { i.ForeColor = Color.FromArgb(0xE6, 0xED, 0xF7); i.Padding = new Forms.Padding(4, 3, 4, 3); }
 
         _icon.ContextMenuStrip = menu;
@@ -41,6 +47,15 @@ public sealed class Tray : IDisposable
     void ToggleProBalance()
     {
         _engine.Config.ProBalance.Enabled = !_engine.Config.ProBalance.Enabled;
+        _engine.ConfigChanged();
+    }
+
+    void TogglePerformance()
+    {
+        var c = _engine.Config;
+        c.PerformanceMode = !c.PerformanceMode;
+        c.PerformancePlan ??= PowerPlans.List().FirstOrDefault(p => p.Name.Contains("Highest", StringComparison.OrdinalIgnoreCase)
+            || p.Name.Contains("Ultimate", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("High performance", StringComparison.OrdinalIgnoreCase))?.Name;
         _engine.ConfigChanged();
     }
 
