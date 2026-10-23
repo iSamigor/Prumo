@@ -50,6 +50,9 @@ public partial class App : Application
             File.WriteAllText(Path.Combine(AppConfig.Dir, ".welcomed"), "");
         }
 
+        if (config.ReadOnly)
+            log.Add(EventKind.RuleFailed, 0, "prumo.exe", "Não consegui ler o config.json (bloqueado ou de uma versão mais nova): usando o padrão, e nada do que mudar agora será salvo");
+
         if (e.Args.Contains("--enable-game-boost", StringComparer.OrdinalIgnoreCase))
             EnableGameBoost(config, log);
 
