@@ -34,6 +34,8 @@ public sealed unsafe class Engine : IDisposable
         public long OverSince;          // Stopwatch ms; 0 = not over the threshold
         public long RestrainedAt;       // 0 = not restrained
         public uint OriginalClass, RestrainedClass;
+        public int OriginalIo = -1;     // I/O priority before we lowered it; -1 = untouched
+        public int RestoreAttempts;
         public int RuleVersion = -1, RuleAttempts;
     }
 
@@ -132,7 +134,8 @@ public sealed unsafe class Engine : IDisposable
                     ApplyRule(p.Pid, t, rule);
 
                 bool fg = p.Pid == fgPid;
-                if (pb.Enabled && p.Pid > 4 && p.Pid != _selfPid)
+                if (!pb.Enabled && t.RestrainedAt != 0) Restore(p.Pid, t, "o ProBalance foi desligado");
+                else if (pb.Enabled && p.Pid > 4 && p.Pid != _selfPid)
                     started += ProBalance(p, t, rule, now, fg || (pb.ExcludeChildrenOfForeground && IsDescendant(p.Pid, fgPid, parents)));
                 if (t.RestrainedAt != 0) restrained++;
 
@@ -215,8 +218,15 @@ public sealed unsafe class Engine : IDisposable
             if (cls == 0 || (pb.OnlyNormalPriority && cls != NORMAL)) return 0;
             var target = pb.LowerToIdle ? IDLE : BELOW_NORMAL;
             if (!Native.SetPriorityClass(h, target)) return 0;
-            if (pb.LowerIoPriority) { int low = (int)IoPriority.Low; Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref low, 4); }
-            t.OriginalClass = cls; t.RestrainedClass = target; t.RestrainedAt = now; t.OverSince = 0;
+            t.OriginalIo = -1;
+            // A rule that sets the I/O priority wins over ProBalance.
+            if (pb.LowerIoPriority && rule?.IoPriority is null &&
+                Native.NtQueryInformationProcess(h, Native.ProcessIoPriority, out int io, 4, out _) >= 0 && io > (int)IoPriority.Low)
+            {
+                int low = (int)IoPriority.Low;
+                if (Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref low, 4) >= 0) t.OriginalIo = io;
+            }
+            t.OriginalClass = cls; t.RestoreAttempts = 0; t.RestrainedClass = target; t.RestrainedAt = now; t.OverSince = 0;
             _log.Add(EventKind.Restrained, p.Pid, p.Name, $"Prioridade reduzida pelo ProBalance (CPU {t.Cpu:0.0}%)");
             return 1;
         }
@@ -226,13 +236,18 @@ public sealed unsafe class Engine : IDisposable
     void Restore(int pid, Tracked t, string why)
     {
         var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-        if (h != 0)
+        if (h == 0)
         {
-            // Only undo our own change: if something else changed the priority since, leave it.
-            if (Native.GetPriorityClass(h) == t.RestrainedClass) Native.SetPriorityClass(h, t.OriginalClass);
-            if (Live.ProBalance.LowerIoPriority) { int n = (int)IoPriority.Normal; Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref n, 4); }
-            Native.CloseHandle(h);
+            // Transient failure: keep it restrained and try again next tick, but do not retry forever.
+            if (++t.RestoreAttempts < 10) return;
+            t.RestrainedAt = 0;
+            _log.Add(EventKind.RuleFailed, pid, t.Exe, "Não consegui restaurar a prioridade (sem acesso ao processo)");
+            return;
         }
+        // Only undo our own change: if something else changed the priority since, leave it.
+        if (Native.GetPriorityClass(h) == t.RestrainedClass) Native.SetPriorityClass(h, t.OriginalClass);
+        if (t.OriginalIo >= 0) { int io = t.OriginalIo; Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref io, 4); t.OriginalIo = -1; }
+        Native.CloseHandle(h);
         t.RestrainedAt = 0;
         _log.Add(EventKind.Restored, pid, t.Exe, "Prioridade original restaurada: " + why);
     }
@@ -319,7 +334,7 @@ public sealed unsafe class Engine : IDisposable
         }
         else if (want is null && _planSet is not null)
         {
-            var back = Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : _planBefore;
+            var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null && PowerPlans.Active() != back && PowerPlans.SetActive(back.Value))
                 _log.Add(EventKind.PowerPlan, 0, "prumo.exe", "Modo jogo terminou: plano de energia " + PlanName(back.Value));
             _planSet = null; _planBefore = null;
@@ -414,7 +429,7 @@ public sealed unsafe class Engine : IDisposable
                 if (t.RestrainedAt != 0) Restore(pid, t, "Prumo foi fechado");
         if (_planSet is not null)
         {
-            var back = Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : _planBefore;
+            var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null) PowerPlans.SetActive(back.Value);
         }
         _sampler?.Dispose();

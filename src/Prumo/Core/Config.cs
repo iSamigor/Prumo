@@ -75,12 +75,20 @@ public sealed class AppConfig
 
     public static AppConfig Load()
     {
-        try
+        if (File.Exists(FilePath))
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath), Json) ?? new();
+            string? text = null;
+            for (int i = 0; i < 5 && text is null; i++)
+            {
+                try { text = File.ReadAllText(FilePath); }
+                catch (IOException) { Thread.Sleep(200); }   // locked (antivirus, backup): retry
+            }
+            // Still unreadable: run on the imported/default rules for now, but never overwrite the user's file.
+            if (text is null) return ProcessLassoImport.TryImport() ?? new AppConfig();
+
+            try { return JsonSerializer.Deserialize<AppConfig>(text, Json) ?? new(); }
+            catch (JsonException) { File.Move(FilePath, FilePath + ".bad", true); }   // keep the broken file for inspection
         }
-        catch { /* corrupt file: fall back to defaults/import below */ }
 
         var cfg = ProcessLassoImport.TryImport() ?? new AppConfig();
         cfg.Save();
