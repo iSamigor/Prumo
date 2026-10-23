@@ -43,7 +43,7 @@ public sealed unsafe class Engine : IDisposable
         public long LimitedAt; public ulong LimitOriginal, LimitMask;  // CPU limiter
         public long RuleFailedAt; public int RuleRounds;               // rule retries for late-opening processes
         public uint SessionId;
-        public bool KeepAlive, KilledByUs, DisallowedSeen;
+        public bool KeepAlive, KilledByUs, DisallowedSeen, WatchLowered;
         public string? CommandLine, WorkDir;
         public Dictionary<WatchdogRule, long>? WatchOver, WatchFired;
     }
@@ -180,7 +180,7 @@ public sealed unsafe class Engine : IDisposable
         var cfg = view.Cfg;
         var pb = cfg.ProBalance;
         var planRules = new List<ProcessRule>();
-        bool keepAwake = false;
+        bool keepAwake = false, gameRunning = false;
 
         SystemSample? sys = null;
         try { sys = _sampler?.Sample(); } catch { }
@@ -215,6 +215,7 @@ public sealed unsafe class Engine : IDisposable
                     ApplyRule(p.Pid, t, rule);
                 if (rule?.PowerPlan is not null) planRules.Add(rule);
                 if (rule?.PreventSleep == true) keepAwake = true;
+                if (rule?.CpuPriority is CpuPriority.High or CpuPriority.Realtime) gameRunning = true;
 
                 if (ours && !t.KeepAlive && p.SessionId != 0 && view.KeepRunning.Match(p.Name, t.Path) is not null) RememberForRestart(p.Pid, t);
                 if (ours && view.Watchdog.Count > 0) Watchdog(p, t, view, now);
@@ -249,7 +250,7 @@ public sealed unsafe class Engine : IDisposable
 
         SmartTrim(procs, fgPid, parents, sys, now, view);
         RunRestarts(now);
-        UpdatePowerPlan(planRules);
+        UpdatePowerPlan(planRules, gameRunning);
         if (keepAwake != _awake)
         {
             Native.SetThreadExecutionState(keepAwake ? Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED : Native.ES_CONTINUOUS);
@@ -486,6 +487,7 @@ public sealed unsafe class Engine : IDisposable
             return;
         }
         if (!fb.Enabled || !fg || t.Boosted || t.RestrainedAt != 0 || rule?.CpuPriority is not null || Untouchable.Contains(p.Name)) return;
+        if (t.WatchLowered) return;   // the watchdog lowered it on purpose
         if (fb.OnlyNormal && p.BasePriority != 8) return;
 
         var hh = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
@@ -680,6 +682,7 @@ public sealed unsafe class Engine : IDisposable
             // ProBalance or the foreground boost must not undo this when they restore.
             if (t.RestrainedAt != 0) t.OriginalClass = BELOW_NORMAL;
             t.Boosted = false;
+            t.WatchLowered = true;
             return true;
         }
         finally { Native.CloseHandle(h); }
@@ -736,7 +739,13 @@ public sealed unsafe class Engine : IDisposable
 
     // ------------------------------------------------------------ power plan
 
-    void UpdatePowerPlan(List<ProcessRule> running)
+    [System.Runtime.InteropServices.DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+
+    /// <summary>Something fullscreen in front (a game, a movie, a presentation): no keyboard/mouse input does not mean idle.</summary>
+    static bool FullscreenInFront() =>
+        SHQueryUserNotificationState(out var st) == 0 && st is 2 or 3 or 4;   // QUNS_BUSY, RUNNING_D3D_FULL_SCREEN, PRESENTATION_MODE
+
+    void UpdatePowerPlan(List<ProcessRule> running, bool gameRunning)
     {
         Guid? want = null;
         string? who = null;
@@ -755,9 +764,10 @@ public sealed unsafe class Engine : IDisposable
             foreach (var r in running)
                 if (Resolve(r.PowerPlan!) is { } id) { want = id; who = r.Exe; break; }
 
-        // IdleSaver only when nothing else asked for a plan: a game or "modo desempenho" always wins.
-        if (want is null && view.Cfg.IdleSaver is { Enabled: true, IdlePlan: { } idlePlan } idle &&
-            Native.IdleMilliseconds() >= (uint)idle.IdleMinutes * 60_000u && Resolve(idlePlan) is { } idleId)
+        // IdleSaver only when nothing else asked for a plan: a game or "modo desempenho" always wins. A controller
+        // game or a movie has no keyboard/mouse input, so programs with a High priority rule and fullscreen windows block it too.
+        if (want is null && !gameRunning && view.Cfg.IdleSaver is { Enabled: true, IdlePlan: { } idlePlan } idle &&
+            Native.IdleMilliseconds() >= (uint)idle.IdleMinutes * 60_000u && !FullscreenInFront() && Resolve(idlePlan) is { } idleId)
         {
             want = idleId; who = "IdleSaver";
         }
@@ -852,6 +862,14 @@ public sealed unsafe class Engine : IDisposable
         var h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
         if (h == 0) return null;
         try { return Native.GetProcessAffinityMask(h, out var pm, out _) ? pm : null; } finally { Native.CloseHandle(h); }
+    }
+
+    /// <summary>"Finalizar processo" from the list: also tells "manter rodando" not to reopen it.</summary>
+    public bool KillNow(int pid, long createTime)
+    {
+        if (!KillVerified(pid, createTime)) return false;
+        lock (_tracked) if (_tracked.TryGetValue(pid, out var t) && t.CreateTime == createTime) t.KilledByUs = true;
+        return true;
     }
 
     /// <summary>Terminates the process only if it is still the one created at createTime.</summary>

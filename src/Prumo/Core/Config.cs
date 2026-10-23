@@ -187,15 +187,36 @@ public sealed class AppConfig
                 catch (IOException) { Thread.Sleep(200); }   // locked (antivirus, backup): retry
             }
             // Still unreadable: run on the imported/default rules for now, but never overwrite the user's file.
-            if (text is null) return ProcessLassoImport.TryImport() ?? new AppConfig();
+            if (text is null) return Fallback();
 
             try { return FromJson(text); }
+            catch (JsonException) when (NewerSchema(text)) { return Fallback(); }   // written by a newer Prumo: leave it alone
             catch (JsonException) { File.Move(FilePath, FilePath + ".bad", true); }   // keep the broken file for inspection
         }
 
         var cfg = ProcessLassoImport.TryImport() ?? new AppConfig();
         cfg.Save();
         return cfg;
+    }
+
+    /// <summary>True when this run must not save (the real file could not be read): edits stay in memory.</summary>
+    [JsonIgnore] public bool ReadOnly { get; private set; }
+
+    static AppConfig Fallback()
+    {
+        var cfg = ProcessLassoImport.TryImport() ?? new AppConfig();
+        cfg.ReadOnly = true;
+        return cfg;
+    }
+
+    static bool NewerSchema(string text)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return doc.RootElement.TryGetProperty(nameof(SchemaVersion), out var v) && v.TryGetInt32(out var n) && n > CurrentSchema;
+        }
+        catch (JsonException) { return false; }
     }
 
     /// <summary>Parses and validates a config file (also used for "Importar configuração"). Throws JsonException.</summary>
@@ -228,7 +249,7 @@ public sealed class AppConfig
         Watchdog.RemoveAll(w => w is null || string.IsNullOrWhiteSpace(w.Exe));
         foreach (var w in Watchdog)
         {
-            w.Threshold = Math.Clamp(w.Threshold, 0, w.Metric == WatchMetric.Cpu ? 100 : 1 << 20);
+            w.Threshold = Math.Clamp(w.Threshold, 1, w.Metric == WatchMetric.Cpu ? 100 : 1 << 20);
             w.ForSeconds = Math.Clamp(w.ForSeconds, 1, 86_400);
         }
 
@@ -258,6 +279,7 @@ public sealed class AppConfig
 
     public void Save()
     {
+        if (ReadOnly) return;
         SecureStore.WriteAllTextAtomic(FilePath, JsonSerializer.Serialize(this, Json));
     }
 

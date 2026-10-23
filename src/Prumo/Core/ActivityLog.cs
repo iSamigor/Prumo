@@ -37,5 +37,12 @@ public sealed class ActivityLog
 
     public List<LogEntry> Snapshot() { lock (_lock) return _entries.ToList(); }
 
-    public void Clear() { lock (_lock) _entries.Clear(); }
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            _entries.Clear();
+            try { File.Delete(_file); File.Delete(_file + ".1"); } catch { }
+        }
+    }
 }

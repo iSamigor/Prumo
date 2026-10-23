@@ -41,6 +41,7 @@ public static unsafe class Launcher
         // Not elevated (a test run): a plain CreateProcess already runs as the user.
         if (!Elevated()) return Create(0, commandLine, dir);
 
+        Native.EnablePrivilege("SeImpersonatePrivilege");   // CreateProcessWithTokenW needs it; admins have it, usually enabled
         GetWindowThreadProcessId(GetShellWindow(), out var shellPid);
         if (shellPid == 0) return "o Explorer não está rodando";
         var hp = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, shellPid);

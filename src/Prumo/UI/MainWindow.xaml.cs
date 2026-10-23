@@ -343,7 +343,7 @@ public partial class MainWindow : Window
         ProcMenu.Items.Add(Item("Finalizar processo", () =>
         {
             if (MessageBox.Show($"Finalizar {exe} (PID {row.Pid})?", "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes
-                && !Engine.KillVerified(row.Pid, row.CreateTime))
+                && !_engine.KillNow(row.Pid, row.CreateTime))
                 Toast("Não foi possível finalizar " + exe);
         }));
     }
@@ -767,9 +767,9 @@ public partial class MainWindow : Window
         IdleMinutes.Text = c.IdleSaver.IdleMinutes.ToString();
         var plans = PowerPlans.List().Select(p => new Option<string>(p.Name, p.Name)).ToList();
         IdlePlan.ItemsSource = plans;
-        // Default: the power saving plan, matched by its GUID (names are localized).
-        var saver = PowerPlans.List().FirstOrDefault(p => p.Id == new Guid("a1841308-3541-4fab-bc81-f71556f20b4a"))?.Name;
-        IdlePlan.SelectedItem = plans.FirstOrDefault(p => p.Value == c.IdleSaver.IdlePlan) ?? plans.FirstOrDefault(p => p.Value == saver) ?? plans.FirstOrDefault();
+        // Default: Balanced, matched by its GUID (names are localized). Power saver caps the CPU, too harsh as a default.
+        var balanced = PowerPlans.List().FirstOrDefault(p => p.Id == new Guid("381b4222-f694-41f0-9685-ff5bb260df2e"))?.Name;
+        IdlePlan.SelectedItem = plans.FirstOrDefault(p => p.Value == c.IdleSaver.IdlePlan) ?? plans.FirstOrDefault(p => p.Value == balanced) ?? plans.FirstOrDefault();
         _loading = false;
     }
 
