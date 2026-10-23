@@ -307,47 +307,47 @@
                                             </DockPanel>
                                             <UniformGrid Grid.Row="1" Columns="4" Margin="-6,0">
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Prioridade de CPU" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Prioridade de CPU" Style="{StaticResource Muted}"/><ui:Help Text='Prioridade com que o Windows distribui a CPU para este programa quando vários disputam ao mesmo tempo.&#10;&#10;Alta: bom para jogos. Abaixo do normal/Ociosa: bom para tarefas pesadas em segundo plano (compactar, renderizar).&#10;Tempo real: perigoso, pode travar mouse e teclado; evite.&#10;"Não alterar" deixa como o programa abriu.'/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding CpuOptions}" SelectedItem="{Binding Cpu}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Prioridade de I/O" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Prioridade de I/O" Style="{StaticResource Muted}"/><ui:Help Text="Prioridade de acesso ao disco. Alta: o programa é atendido primeiro ao ler/gravar. Baixa/Muito baixa: bom para downloads, backups e antivírus não atrapalharem."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding IoOptions}" SelectedItem="{Binding Io}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Prioridade de GPU" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Prioridade de GPU" Style="{StaticResource Muted}"/><ui:Help Text="Prioridade com que a placa de vídeo atende este programa quando outros também a estão usando (por exemplo, um jogo e um navegador com vídeo)."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding GpuOptions}" SelectedItem="{Binding Gpu}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Prioridade de memória" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Prioridade de memória" Style="{StaticResource Muted}"/><ui:Help Text="Quando a RAM aperta, o Windows tira da memória primeiro as páginas de programas com prioridade de memória baixa.&#10;&#10;Baixe para programas de segundo plano; deixe Normal para jogos."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding MemOptions}" SelectedItem="{Binding Memory}" ToolTip="Páginas de memória com prioridade baixa saem da RAM primeiro quando ela aperta"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="GPU preferida" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="GPU preferida" Style="{StaticResource Muted}"/><ui:Help Text="Em PCs com duas placas de vídeo (notebook com integrada + dedicada), escolhe qual o programa usa. Mesma opção de Configurações &gt; Sistema &gt; Tela &gt; Gráficos.&#10;&#10;Vale a partir da próxima vez que o programa abrir."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding GpuPrefOptions}" SelectedItem="{Binding GpuPref}" ToolTip="Vale a partir da próxima vez que o programa abrir"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Afinidade (CPUs)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Afinidade (CPUs)" Style="{StaticResource Muted}"/><ui:Help Text='Prende o programa a estas CPUs lógicas: ele não roda em nenhuma outra. Ex.: "1-7" (da 1 à 7) ou "0,2,4-6".&#10;&#10;Útil para tirar um jogo da CPU 0 ou isolar um programa em poucos núcleos. Vazio = todas as CPUs.'/></StackPanel>
                                                     <TextBox Text="{Binding Affinity, UpdateSourceTrigger=LostFocus}" ToolTip="Só roda nessas CPUs. Ex.: 1-7 ou 0,2,4-6. Vazio = todas"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="CPU Sets (preferência)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="CPU Sets (preferência)" Style="{StaticResource Muted}"/><ui:Help Text='Como a afinidade, mas é só uma preferência: o Windows usa estas CPUs primeiro e ainda pode usar outras se precisar. Mais seguro que a afinidade. Mesmo formato: "2-7".'/></StackPanel>
                                                     <TextBox Text="{Binding CpuSets, UpdateSourceTrigger=LostFocus}" ToolTip="O Windows prefere essas CPUs, mas pode usar outras se precisar. Ex.: 2-7"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,10">
-                                                    <TextBlock Text="Boost dinâmico de prioridade" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Boost dinâmico de prioridade" Style="{StaticResource Muted}"/><ui:Help Text='O Windows sobe por instantes a prioridade de threads que acordam (por exemplo, quando chega um clique ou um pacote de rede).&#10;&#10;Desligar deixa a prioridade mais estável; alguns jogos ficam com tempos de quadro mais regulares. "Não alterar" mantém o padrão do Windows.'/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding BoostOptions}" SelectedItem="{Binding Boost}" ToolTip="Desligar evita picos de prioridade das threads; alguns jogos ficam mais estáveis"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0">
-                                                    <TextBlock Text="Modo de eficiência" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Modo de eficiência" Style="{StaticResource Muted}"/><ui:Help Text="Modo de eficiência (EcoQoS) do Windows 11: o programa roda nos núcleos e frequências mais econômicos.&#10;&#10;Ligado: bom para programas de segundo plano. Desligado: garante que o Windows nunca economize energia neste programa (bom para jogos)."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding EfficiencyOptions}" SelectedItem="{Binding Efficiency}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0">
-                                                    <TextBlock Text="Modo jogo (plano de energia)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Modo jogo (plano de energia)" Style="{StaticResource Muted}"/><ui:Help Text="Enquanto este programa estiver aberto, o Prumo troca para este plano de energia; quando ele fecha, volta para o plano normal (definido em Ajustes)."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding PlanOptions}" SelectedItem="{Binding Plan}"/>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0">
-                                                    <TextBlock Text="Limitador: % · núcleos · seg." Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Limitador: % · núcleos · seg." Style="{StaticResource Muted}"/><ui:Help Text="Limitador de CPU: se o programa passar de X% de CPU, fica preso a N núcleos por T segundos e depois volta ao normal.&#10;&#10;Ex.: 50 · 4 · 10 = acima de 50%, só 4 núcleos por 10 s. Bom para programas que de vez em quando ocupam a CPU inteira. Deixe o % vazio para desligar."/></StackPanel>
                                                     <Grid ToolTip="Quando passar de X% de CPU, fica restrito a N núcleos por T segundos. Deixe o % vazio para desligar.">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/>
@@ -358,8 +358,8 @@
                                                     </Grid>
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0" VerticalAlignment="Bottom">
-                                                    <CheckBox Style="{StaticResource Switch}" Content="Excluir do ProBalance" IsChecked="{Binding Excluded}" Margin="0,0,0,6"/>
-                                                    <CheckBox Style="{StaticResource Switch}" Content="Impedir suspensão" IsChecked="{Binding PreventSleep}" Margin="0,0,0,6" ToolTip="O PC não entra em suspensão enquanto este programa estiver aberto (downloads, renderização)"/>
+                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Excluded}" Margin="0,0,0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Excluir do ProBalance" VerticalAlignment="Center"/><ui:Help Text="O ProBalance nunca vai baixar a prioridade deste programa, mesmo quando ele estiver usando muita CPU em segundo plano."/></StackPanel></CheckBox>
+                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding PreventSleep}" Margin="0,0,0,6" ToolTip="O PC não entra em suspensão enquanto este programa estiver aberto (downloads, renderização)"><StackPanel Orientation="Horizontal"><TextBlock Text="Impedir suspensão" VerticalAlignment="Center"/><ui:Help Text="Enquanto este programa estiver aberto, o PC não entra em suspensão sozinho (a tela ainda pode apagar). Bom para downloads longos, renderização e servidores."/></StackPanel></CheckBox>
                                                 </StackPanel>
                                             </UniformGrid>
                                             <StackPanel Grid.Row="2" Margin="0,12,0,0">
@@ -372,7 +372,7 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </StackPanel.Style>
-                                                <TextBlock Text="Exceto (programas que não são jogos; separados por vírgula, * vale)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Exceto (programas que não são jogos; separados por vírgula, * vale)" Style="{StaticResource Muted}"/><ui:Help Text="Programas dentro da pasta que esta regra deve ignorar, como launchers, ferramentas de crash report e o Wallpaper Engine. Separe por vírgula; * vale qualquer coisa (ex.: *crash*.exe)."/></StackPanel>
                                                 <TextBox Text="{Binding ExceptText, UpdateSourceTrigger=LostFocus}"/>
                                             </StackPanel>
                                         </Grid>
@@ -393,7 +393,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <CheckBox x:Name="PbEnabled" Style="{StaticResource Switch}" Click="PbChanged">
                             <StackPanel>
-                                <TextBlock Text="ProBalance ligado" Style="{StaticResource H2}"/>
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="ProBalance ligado" Style="{StaticResource H2}"/><ui:Help Text="O ProBalance vigia o uso de CPU o tempo todo. Quando o PC está ocupado e um programa em segundo plano fica usando CPU demais, ele baixa a prioridade desse programa por alguns segundos, para o que você está usando (jogo, navegador, janela em foco) continuar fluido.&#10;&#10;Ele não fecha nem limita o programa: só diz ao Windows para atender os outros primeiro. Quando o programa se acalma, a prioridade original volta.&#10;&#10;Desligado, o Prumo não muda a prioridade de nada sozinho (as suas regras continuam valendo)."/></StackPanel>
                                 <TextBlock Text="Desligue para não mexer em nenhum processo automaticamente" Style="{StaticResource Muted}"/>
                             </StackPanel>
                         </CheckBox>
@@ -404,27 +404,27 @@
                             <TextBlock Text="Quando restringir" Style="{StaticResource H2}" Margin="0,0,0,14"/>
                             <UniformGrid Columns="3" Margin="-6,0">
                                 <StackPanel Margin="6,0,6,12">
-                                    <TextBlock Text="CPU total acima de (%)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="CPU total acima de (%)" Style="{StaticResource Muted}"/><ui:Help Text="O ProBalance só age quando o uso total da CPU do PC passa deste valor. Abaixo disso o PC está folgado e ninguém é restringido.&#10;&#10;Valores baixos (10–20%) deixam o ProBalance mais atento; valores altos (50%+) fazem ele agir só quando o PC está realmente carregado."/></StackPanel>
                                     <TextBox x:Name="PbTotal" LostFocus="PbChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0,6,12">
-                                    <TextBlock Text="Processo acima de (%)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Processo acima de (%)" Style="{StaticResource Muted}"/><ui:Help Text='Quanto da CPU do PC inteiro um único programa precisa usar para ser considerado "pesado". Ex.: 8% num processador de 16 threads é pouco mais de uma thread cheia.&#10;&#10;Só programas acima deste valor (e acima do tempo abaixo) são restringidos.'/></StackPanel>
                                     <TextBox x:Name="PbProc" LostFocus="PbChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0,6,12">
-                                    <TextBlock Text="Por pelo menos (ms)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Por pelo menos (ms)" Style="{StaticResource Muted}"/><ui:Help Text="Por quanto tempo seguido o programa precisa ficar acima do limite antes de ser restringido, em milissegundos (1000 ms = 1 segundo).&#10;&#10;Evita restringir picos curtos, como abrir uma aba ou carregar um arquivo."/></StackPanel>
                                     <TextBox x:Name="PbTime" LostFocus="PbChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0,6,0">
-                                    <TextBlock Text="Restaurar abaixo de (%)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Restaurar abaixo de (%)" Style="{StaticResource Muted}"/><ui:Help Text="Quando o uso de CPU do programa restringido cai abaixo deste valor, a prioridade original volta (respeitando a restrição mínima)."/></StackPanel>
                                     <TextBox x:Name="PbRestore" LostFocus="PbChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0,6,0">
-                                    <TextBlock Text="Restrição mínima (ms)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Restrição mínima (ms)" Style="{StaticResource Muted}"/><ui:Help Text="Tempo mínimo que um programa fica restringido, mesmo que se acalme antes. Evita ficar subindo e descendo a prioridade toda hora."/></StackPanel>
                                     <TextBox x:Name="PbMin" LostFocus="PbChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0,6,0">
-                                    <TextBlock Text="Restrição máxima (ms, 0 = sem limite)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Restrição máxima (ms, 0 = sem limite)" Style="{StaticResource Muted}"/><ui:Help Text="Tempo máximo de uma restrição. Passado esse tempo, a prioridade volta mesmo que o programa continue pesado (ele pode ser restringido de novo depois).&#10;&#10;0 = sem limite: fica restringido enquanto continuar pesado."/></StackPanel>
                                     <TextBox x:Name="PbMax" LostFocus="PbChanged"/>
                                 </StackPanel>
                             </UniformGrid>
@@ -434,10 +434,10 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
                             <TextBlock Text="Quem fica de fora" Style="{StaticResource H2}" Margin="0,0,0,10"/>
-                            <CheckBox x:Name="PbFg" Style="{StaticResource Switch}" Content="Programa em primeiro plano" Click="PbChanged" Margin="0,6"/>
-                            <CheckBox x:Name="PbFgChildren" Style="{StaticResource Switch}" Content="Processos filhos do programa em primeiro plano" Click="PbChanged" Margin="0,6"/>
-                            <CheckBox x:Name="PbServices" Style="{StaticResource Switch}" Content="Serviços do Windows" Click="PbChanged" Margin="0,6"/>
-                            <CheckBox x:Name="PbOnlyNormal" Style="{StaticResource Switch}" Content="Processos que não estão em prioridade Normal" Click="PbChanged" Margin="0,6"/>
+                            <CheckBox x:Name="PbFg" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Programa em primeiro plano" VerticalAlignment="Center"/><ui:Help Text="Nunca restringe o programa da janela que está ativa agora (a que você está usando). Recomendado deixar ligado."/></StackPanel></CheckBox>
+                            <CheckBox x:Name="PbFgChildren" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Processos filhos do programa em primeiro plano" VerticalAlignment="Center"/><ui:Help Text="Também deixa de fora os processos abertos pelo programa em foco, como as abas de um navegador, o jogo aberto por um launcher ou um compilador chamado por um editor."/></StackPanel></CheckBox>
+                            <CheckBox x:Name="PbServices" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Serviços do Windows" VerticalAlignment="Center"/><ui:Help Text="Deixa de fora os processos que rodam como serviço (sessão 0): antivírus, Windows Update, drivers e afins. Recomendado deixar ligado."/></StackPanel></CheckBox>
+                            <CheckBox x:Name="PbOnlyNormal" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Processos que não estão em prioridade Normal" VerticalAlignment="Center"/><ui:Help Text="Só restringe programas que estão em prioridade Normal. Programas que você (ou o próprio programa) já colocou em outra prioridade não são tocados."/></StackPanel></CheckBox>
                             <TextBlock Text="Programas com uma regra de prioridade de CPU ou com &quot;Excluir do ProBalance&quot; também ficam de fora." Style="{StaticResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
@@ -445,8 +445,8 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Como restringir" Style="{StaticResource H2}" Margin="0,0,0,10"/>
-                            <CheckBox x:Name="PbIdle" Style="{StaticResource Switch}" Content="Baixar para Ociosa em vez de Abaixo do normal" Click="PbChanged" Margin="0,6"/>
-                            <CheckBox x:Name="PbIo" Style="{StaticResource Switch}" Content="Baixar também a prioridade de I/O" Click="PbChanged" Margin="0,6"/>
+                            <CheckBox x:Name="PbIdle" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Baixar para Ociosa em vez de Abaixo do normal" VerticalAlignment="Center"/><ui:Help Text="Ociosa é a prioridade mais baixa que existe: o programa só usa a CPU quando sobra. Restringe com mais força, mas o programa pode ficar bem lento enquanto isso.&#10;&#10;Desligado, usa Abaixo do normal, que é mais suave."/></StackPanel></CheckBox>
+                            <CheckBox x:Name="PbIo" Style="{StaticResource Switch}" Click="PbChanged" Margin="0,6"><StackPanel Orientation="Horizontal"><TextBlock Text="Baixar também a prioridade de I/O" VerticalAlignment="Center"/><ui:Help Text="Além da CPU, baixa a prioridade de acesso ao disco do programa restringido, para downloads, instaladores e indexadores não travarem o disco do que você está usando."/></StackPanel></CheckBox>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -462,7 +462,7 @@
                         <StackPanel>
                             <CheckBox x:Name="PerfMode" Style="{StaticResource Switch}" Click="PerfChanged">
                                 <StackPanel>
-                                    <TextBlock Text="Modo desempenho" Style="{StaticResource H2}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Modo desempenho" Style="{StaticResource H2}"/><ui:Help Text='Mantém o plano de energia escolhido abaixo ativo o tempo todo, e não só quando um programa com "modo jogo" está aberto.&#10;&#10;Planos de alto desempenho deixam o processador sempre pronto (menos atraso para acelerar), mas gastam um pouco mais de energia. Ao desligar, volta o plano anterior.'/></StackPanel>
                                     <TextBlock Text="Mantém o plano de energia abaixo ativo o tempo todo, não só quando um jogo abre" Style="{StaticResource Muted}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -474,39 +474,39 @@
                         <StackPanel>
                             <CheckBox x:Name="FgBoost" Style="{StaticResource Switch}" Click="PerfChanged">
                                 <StackPanel>
-                                    <TextBlock Text="Prioridade extra para o programa em foco" Style="{StaticResource H2}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Prioridade extra para o programa em foco" Style="{StaticResource H2}"/><ui:Help Text="Sobe a prioridade de CPU da janela que você está usando e devolve a prioridade original quando você troca de janela.&#10;&#10;Ajuda o programa em foco a ganhar a disputa pela CPU contra coisas em segundo plano. Programas com regra de prioridade própria não são alterados."/></StackPanel>
                                     <TextBlock Text="Sobe a prioridade da janela ativa e devolve quando você troca de janela" Style="{StaticResource Muted}"/>
                                 </StackPanel>
                             </CheckBox>
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                 <ComboBox x:Name="FgBoostPriority" Width="200" SelectionChanged="PerfChanged"/>
-                                <CheckBox x:Name="FgBoostOnlyNormal" Style="{StaticResource Switch}" Content="Só se estiver em Normal" Margin="24,0,0,0" Click="PerfChanged"/>
+                                <CheckBox x:Name="FgBoostOnlyNormal" Style="{StaticResource Switch}" Margin="24,0,0,0" Click="PerfChanged"><StackPanel Orientation="Horizontal"><TextBlock Text="Só se estiver em Normal" VerticalAlignment="Center"/><ui:Help Text="Só dá a prioridade extra se a janela em foco estiver em prioridade Normal. Programas que já têm outra prioridade ficam como estão."/></StackPanel></CheckBox>
                             </StackPanel>
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="SmartTrim (memória)" Style="{StaticResource H2}"/>
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="SmartTrim (memória)" Style="{StaticResource H2}"/><ui:Help Text="Ajuda quando a RAM está quase cheia: tira da RAM as páginas que programas em segundo plano não estão usando, abrindo espaço para o que está em foco.&#10;&#10;O programa continua funcionando; se precisar daquela memória de novo, o Windows traz de volta (pode demorar um instante na primeira vez)."/></StackPanel>
                             <TextBlock Text="Libera RAM de programas em segundo plano quando a memória aperta. Nunca mexe no programa em foco nem em programas com regra de prioridade." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,12"/>
-                            <CheckBox x:Name="TrimOn" Style="{StaticResource Switch}" Content="Liberar memória de programas em segundo plano" Click="PerfChanged" Margin="0,4"/>
+                            <CheckBox x:Name="TrimOn" Style="{StaticResource Switch}" Click="PerfChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Liberar memória de programas em segundo plano" VerticalAlignment="Center"/><ui:Help Text='Liga a liberação de memória ("trim") dos programas em segundo plano. Nunca mexe no programa em foco, nos filhos dele, em serviços nem em programas com regra de prioridade.'/></StackPanel></CheckBox>
                             <UniformGrid Columns="3" Margin="-6,8,-6,8">
                                 <StackPanel Margin="6,0">
-                                    <TextBlock Text="Quando a RAM passar de (%)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Quando a RAM passar de (%)" Style="{StaticResource Muted}"/><ui:Help Text="Só libera memória quando o uso de RAM do PC estiver acima deste valor. Com a RAM folgada, não faz nada."/></StackPanel>
                                     <TextBox x:Name="TrimLoad" LostFocus="PerfChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0">
-                                    <TextBlock Text="Programas acima de (MB)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Programas acima de (MB)" Style="{StaticResource Muted}"/><ui:Help Text="Só libera memória de programas que estão usando mais do que isto. Programas pequenos não compensam."/></StackPanel>
                                     <TextBox x:Name="TrimMinMb" LostFocus="PerfChanged"/>
                                 </StackPanel>
                                 <StackPanel Margin="6,0">
-                                    <TextBlock Text="No máximo a cada (minutos)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="No máximo a cada (minutos)" Style="{StaticResource Muted}"/><ui:Help Text="Intervalo mínimo entre duas liberações, para não ficar fazendo isso o tempo todo."/></StackPanel>
                                     <TextBox x:Name="TrimInterval" LostFocus="PerfChanged"/>
                                 </StackPanel>
                             </UniformGrid>
-                            <CheckBox x:Name="PurgeOn" Style="{StaticResource Switch}" Content="Limpar a lista de espera (cache) quando a RAM livre acabar" Click="PerfChanged" Margin="0,8,0,4"/>
+                            <CheckBox x:Name="PurgeOn" Style="{StaticResource Switch}" Click="PerfChanged" Margin="0,8,0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Limpar a lista de espera (cache) quando a RAM livre acabar" VerticalAlignment="Center"/><ui:Help Text="O Windows guarda na RAM uma cópia de arquivos usados recentemente (lista de espera). Normalmente isso é bom, mas alguns jogos engasgam quando a RAM livre acaba.&#10;&#10;Ligado, o Prumo limpa esse cache quando a RAM livre fica abaixo do valor abaixo (no máximo a cada 5 minutos)."/></StackPanel></CheckBox>
                             <StackPanel Margin="0,8,0,0" Width="250" HorizontalAlignment="Left">
-                                <TextBlock Text="Quando sobrar menos de (MB livres)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Quando sobrar menos de (MB livres)" Style="{StaticResource Muted}"/><ui:Help Text="Limpa a lista de espera quando a memória livre de verdade ficar abaixo deste valor, em MB."/></StackPanel>
                                 <TextBox x:Name="PurgeBelow" LostFocus="PerfChanged"/>
                             </StackPanel>
                         </StackPanel>
@@ -514,7 +514,7 @@
 
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Resolução do timer do Windows" Style="{StaticResource H2}"/>
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="Resolução do timer do Windows" Style="{StaticResource H2}"/><ui:Help Text='Define a precisão do relógio interno usado para esperas curtas. 0,5 ms ou 1 ms deixa pausas curtas mais precisas, o que alguns jogos e programas de áudio aproveitam.&#10;&#10;Custa um pouco mais de energia. Vale só enquanto o Prumo estiver aberto; "Padrão do Windows" não mexe em nada.'/></StackPanel>
                             <TextBlock Text="Um timer mais fino deixa esperas curtas mais precisas. No Windows 11 o efeito é pequeno e vale só enquanto o Prumo estiver aberto." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,12"/>
                             <ComboBox x:Name="TimerRes" Width="250" HorizontalAlignment="Left" SelectionChanged="PerfChanged"/>
                         </StackPanel>
@@ -531,8 +531,8 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,4">
-                                <CheckBox x:Name="AutoLogOnly" DockPanel.Dock="Right" Style="{StaticResource Switch}" Content="Só registrar" Click="AutoLogOnly_Click" ToolTip="Não fecha: só anota no Registro quando um desses programas abrir"/>
-                                <TextBlock Text="Processos proibidos" Style="{StaticResource H2}"/>
+                                <CheckBox x:Name="AutoLogOnly" DockPanel.Dock="Right" Style="{StaticResource Switch}" Click="AutoLogOnly_Click" ToolTip="Não fecha: só anota no Registro quando um desses programas abrir"><StackPanel Orientation="Horizontal"><TextBlock Text="Só registrar" VerticalAlignment="Center"/><ui:Help Text="Em vez de fechar, só anota no Registro quando um programa proibido abrir. Bom para testar a lista antes de ligar de verdade."/></StackPanel></CheckBox>
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="Processos proibidos" Style="{StaticResource H2}"/><ui:Help Text="Programas que você não quer rodando nunca: o Prumo fecha cada um assim que ele abre (verifica uma vez por segundo).&#10;&#10;Vale nome (app.exe), padrão com * (*updater*.exe) ou pasta (C:\Pasta\*). Serviços e processos do Windows nunca são fechados."/></StackPanel>
                             </DockPanel>
                             <TextBlock Text="Fechados assim que abrem. Vale nome (app.exe), padrão (*updater*.exe) ou pasta (C:\Pasta\*). Serviços e processos do Windows nunca são fechados." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <StackPanel Orientation="Horizontal">
@@ -563,7 +563,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="Manter rodando" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Manter rodando" Style="{StaticResource H2}"/><ui:Help Text="Se um destes programas fechar ou travar e cair, o Prumo abre de novo com os mesmos argumentos, como o seu usuário (nunca como administrador).&#10;&#10;Espera 2, 4, 8... segundos entre tentativas e desiste se o programa fechar 5 vezes em 10 minutos. Fechar pelo menu Processos do Prumo não reabre."/></StackPanel>
                             <TextBlock Text="Se um desses programas fechar (ou travar e cair), o Prumo abre de novo com os mesmos argumentos, como o seu usuário (não como administrador). Para de tentar se fechar 5 vezes em 10 minutos." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <StackPanel Orientation="Horizontal">
                                 <Grid Width="320">
@@ -595,7 +595,7 @@
                         <StackPanel>
                             <DockPanel Margin="0,0,0,4">
                                 <Button DockPanel.Dock="Right" Content="Novo vigia" Click="AddWatchdog_Click"/>
-                                <TextBlock Text="Vigia" Style="{StaticResource H2}"/>
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="Vigia" Style="{StaticResource H2}"/><ui:Help Text='Regras do tipo "se acontecer isto, faça aquilo": quando um programa passa do limite de CPU ou de RAM por um tempo seguido, o Prumo age.&#10;&#10;Depois de agir, espera pelo menos 1 minuto antes de agir de novo no mesmo processo. O interruptor à esquerda de cada vigia liga ou desliga só ele.'/></StackPanel>
                             </DockPanel>
                             <TextBlock Text="Quando um programa passar do limite de CPU ou de RAM por um tempo, o Prumo age. Depois de agir, espera pelo menos 1 minuto antes de agir de novo no mesmo processo." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <TextBlock x:Name="WatchdogEmpty" Text="Nenhum vigia ainda." Style="{StaticResource Muted}" Margin="0,4"/>
@@ -615,23 +615,23 @@
                                                 </Grid.ColumnDefinitions>
                                                 <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Enabled}" VerticalAlignment="Bottom" Margin="0,0,10,6" ToolTip="Ligado"/>
                                                 <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                    <TextBlock Text="Programa" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Programa" Style="{StaticResource Muted}"/><ui:Help Text="Nome do programa (app.exe), padrão com * ou pasta (C:\Pasta\*)."/></StackPanel>
                                                     <TextBox Text="{Binding Exe, UpdateSourceTrigger=LostFocus}"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Margin="0,0,8,0">
-                                                    <TextBlock Text="Medida" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Medida" Style="{StaticResource Muted}"/><ui:Help Text="O que vigiar: CPU (% do PC inteiro) ou RAM (MB usados pelo programa)."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding MetricOptions}" SelectedItem="{Binding Metric}"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="3" Margin="0,0,8,0">
-                                                    <TextBlock Text="Acima de" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Acima de" Style="{StaticResource Muted}"/><ui:Help Text="Limite: % de CPU ou MB de RAM, conforme a medida escolhida."/></StackPanel>
                                                     <TextBox Text="{Binding Threshold, UpdateSourceTrigger=LostFocus}"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="4" Margin="0,0,8,0">
-                                                    <TextBlock Text="Por (seg.)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Por (seg.)" Style="{StaticResource Muted}"/><ui:Help Text="Por quantos segundos seguidos o programa precisa ficar acima do limite antes do vigia agir."/></StackPanel>
                                                     <TextBox Text="{Binding Seconds, UpdateSourceTrigger=LostFocus}"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="5" Margin="0,0,8,0">
-                                                    <TextBlock Text="Então" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Então" Style="{StaticResource Muted}"/><ui:Help Text="O que fazer: só registrar; reduzir a prioridade para Abaixo do normal; liberar a memória dele; reiniciar (fecha e abre de novo com os mesmos argumentos); ou fechar."/></StackPanel>
                                                     <ComboBox ItemsSource="{Binding ActionOptions}" SelectedItem="{Binding WhatToDo}"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="6" Style="{StaticResource GhostButton}" VerticalAlignment="Bottom" Click="RemoveWatchdog_Click" Tag="{Binding}" ToolTip="Remover vigia">
@@ -649,17 +649,17 @@
                         <StackPanel>
                             <CheckBox x:Name="IdleOn" Style="{StaticResource Switch}" Click="IdleChanged" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="IdleSaver" FontWeight="SemiBold"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="IdleSaver" FontWeight="SemiBold"/><ui:Help Text="Quando você fica um tempo sem usar teclado e mouse, troca para um plano de energia mais econômico; assim que você mexer, volta o plano normal.&#10;&#10;Não age com jogo aberto (programa com regra de prioridade Alta), com algo em tela cheia (vídeo, apresentação) nem com o modo desempenho ligado."/></StackPanel>
                                     <TextBlock Text="Com o PC parado (sem teclado e mouse), troca para um plano de energia econômico; volta assim que você mexer. Não age enquanto o modo desempenho ou um modo jogo estiver ativo." Style="{StaticResource Muted}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </CheckBox>
                             <StackPanel Orientation="Horizontal">
                                 <StackPanel Margin="0,0,14,0">
-                                    <TextBlock Text="Ocioso depois de (min)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Ocioso depois de (min)" Style="{StaticResource Muted}"/><ui:Help Text="Minutos sem teclado e mouse para o PC contar como ocioso."/></StackPanel>
                                     <TextBox x:Name="IdleMinutes" Width="140" LostFocus="IdleChanged"/>
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="Plano enquanto ocioso" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Plano enquanto ocioso" Style="{StaticResource Muted}"/><ui:Help Text="Plano de energia usado enquanto o PC está ocioso. Equilibrado é o mais seguro; Economia de energia economiza mais, mas deixa tudo mais lento."/></StackPanel>
                                     <ComboBox x:Name="IdlePlan" Width="320" SelectionChanged="IdlePlan_Changed"/>
                                 </StackPanel>
                             </StackPanel>
@@ -722,7 +722,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="Aparência" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Aparência" Style="{StaticResource H2}"/><ui:Help Text="Tema das cores do Prumo. Azul é o original; Claro tem fundo branco; Preto é todo preto, ótimo para telas OLED e para usar à noite. Troca na hora."/></StackPanel>
                             <TextBlock Text="Azul é o tema original; Claro tem fundo branco; Preto é todo preto (bom para telas OLED)" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <ComboBox x:Name="SetTheme" Width="320" HorizontalAlignment="Left" SelectionChanged="Theme_Changed"/>
                         </StackPanel>
@@ -732,13 +732,13 @@
                         <StackPanel>
                             <CheckBox x:Name="SetAutostart" Style="{StaticResource Switch}" Click="Autostart_Click" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Iniciar com o Windows" FontWeight="SemiBold"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Iniciar com o Windows" FontWeight="SemiBold"/><ui:Help Text='Abre o Prumo na bandeja quando você entra no Windows, já com permissão de administrador e sem pedido do UAC (usa uma tarefa agendada "Prumo").&#10;&#10;Sem isso, as regras e o ProBalance só funcionam quando você abrir o Prumo.'/></StackPanel>
                                     <TextBlock Text="Abre direto na bandeja, com permissão de administrador e sem aviso nenhum" Style="{StaticResource Muted}"/>
                                 </StackPanel>
                             </CheckBox>
                             <CheckBox x:Name="SetCloseToTray" Style="{StaticResource Switch}" Click="CloseToTray_Click">
                                 <StackPanel>
-                                    <TextBlock Text="Fechar para a bandeja" FontWeight="SemiBold"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Fechar para a bandeja" FontWeight="SemiBold"/><ui:Help Text="O X da janela só esconde o Prumo: ele continua rodando perto do relógio. Para sair de verdade, use o botão direito no ícone da bandeja &gt; Sair."/></StackPanel>
                                     <TextBlock Text="O X da janela só esconde; o gerenciamento continua" Style="{StaticResource Muted}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -747,16 +747,16 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="Plano de energia" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Plano de energia" Style="{StaticResource H2}"/><ui:Help Text="Mostra o plano de energia ativo agora e para qual plano o Prumo volta quando o modo jogo, o modo desempenho ou o IdleSaver terminam."/></StackPanel>
                             <TextBlock x:Name="SetPlanNow" Style="{StaticResource Muted}" Margin="0,0,0,12"/>
-                            <TextBlock Text="Ao sair do modo jogo, voltar para" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Ao sair do modo jogo, voltar para" Style="{StaticResource Muted}"/><ui:Help Text='"O plano que estava ativo antes" volta exatamente para o que estava antes de o Prumo trocar. Escolha um plano fixo se quiser sempre voltar para ele.'/></StackPanel>
                             <ComboBox x:Name="SetDefaultPlan" Width="320" HorizontalAlignment="Left" SelectionChanged="DefaultPlan_Changed"/>
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="Backup da configuração" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Backup da configuração" Style="{StaticResource H2}"/><ui:Help Text="Exportar: salva todas as regras e ajustes num arquivo .json. Importar: carrega um arquivo exportado (substitui a configuração atual). Restaurar padrões: apaga tudo e volta ao início."/></StackPanel>
                             <TextBlock Text="Salve as regras e os ajustes num arquivo para guardar, levar para outro PC ou anexar num relato de problema." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="Exportar..." Click="ExportConfig_Click"/>
@@ -768,7 +768,7 @@
 
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Process Lasso" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"><TextBlock Text="Process Lasso" Style="{StaticResource H2}"/><ui:Help Text="Lê o prolasso.ini do Process Lasso e traz as regras de prioridade, afinidade, I/O, GPU, modo jogo e as opções do ProBalance. Substitui as regras atuais do Prumo."/></StackPanel>
                             <TextBlock Text="Importa de novo as regras e o ProBalance do prolasso.ini. Substitui a configuração atual do Prumo." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="Importar do Process Lasso" Click="Import_Click"/>
