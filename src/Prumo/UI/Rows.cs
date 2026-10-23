@@ -22,7 +22,8 @@ public sealed class ProcessRow : Observable
 {
     public int Pid { get; }
     public string Exe { get; }
-    public ProcessRow(int pid, string exe) { Pid = pid; Exe = exe; }
+    public long CreateTime { get; }
+    public ProcessRow(int pid, string exe, long createTime) { Pid = pid; Exe = exe; CreateTime = createTime; }
 
     double _cpu; ulong _mem; int _prio; bool _restrained, _rule, _fg;
     public double Cpu => _cpu;
@@ -235,6 +236,60 @@ public sealed class RuleRow : Observable
         get => _rule.ProBalanceExcluded;
         set { _rule.ProBalanceExcluded = value; _changed(); }
     }
+    public bool PreventSleep
+    {
+        get => _rule.PreventSleep;
+        set { _rule.PreventSleep = value; _changed(); }
+    }
+}
+
+public sealed class WatchdogRow
+{
+    readonly WatchdogRule _w;
+    readonly Action _changed;
+    public WatchdogRule Rule => _w;
+    public WatchdogRow(WatchdogRule w, Action changed) { _w = w; _changed = changed; }
+
+    public static readonly List<Option<string>> MetricChoices = new() { new("CPU (%)", nameof(WatchMetric.Cpu)), new("RAM (MB)", nameof(WatchMetric.MemoryMb)) };
+    public static readonly List<Option<string>> ActionChoices = new()
+    {
+        new("Só registrar", nameof(WatchAction.Log)), new("Reduzir a prioridade", nameof(WatchAction.LowerPriority)),
+        new("Liberar memória", nameof(WatchAction.TrimMemory)), new("Reiniciar o programa", nameof(WatchAction.Restart)),
+        new("Fechar o programa", nameof(WatchAction.Kill)),
+    };
+    public List<Option<string>> MetricOptions => MetricChoices;
+    public List<Option<string>> ActionOptions => ActionChoices;
+
+    public string Exe
+    {
+        get => _w.Exe;
+        set { if (value.Trim().Length > 0) { _w.Exe = value.Trim(); _changed(); } }
+    }
+    public Option<string> Metric
+    {
+        get => MetricChoices.First(o => o.Value == _w.Metric.ToString());
+        set { if (value?.Value is { } v) { _w.Metric = Enum.Parse<WatchMetric>(v); _changed(); } }
+    }
+    public Option<string> WhatToDo
+    {
+        get => ActionChoices.First(o => o.Value == _w.Action.ToString());
+        set { if (value?.Value is { } v) { _w.Action = Enum.Parse<WatchAction>(v); _changed(); } }
+    }
+    public string Threshold
+    {
+        get => _w.Threshold.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        set { if (double.TryParse(value.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) && d > 0) { _w.Threshold = d; _changed(); } }
+    }
+    public string Seconds
+    {
+        get => _w.ForSeconds.ToString();
+        set { if (int.TryParse(value, out var n) && n is > 0 and <= 86_400) { _w.ForSeconds = n; _changed(); } }
+    }
+    public bool Enabled
+    {
+        get => _w.Enabled;
+        set { _w.Enabled = value; _changed(); }
+    }
 }
 
 public sealed class LogRow
@@ -270,4 +325,12 @@ public static class Format
         >= 1UL << 20 => $"{b / (double)(1UL << 20):0} MB",
         _ => $"{b / 1024.0:0} KB",
     };
+}
+
+/// <summary>Visible when the bound text is empty: placeholder hints over text boxes.</summary>
+public sealed class EmptyToVisibleConverter : System.Windows.Data.IValueConverter
+{
+    public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c) =>
+        string.IsNullOrEmpty(value as string) ? Visibility.Visible : Visibility.Collapsed;
+    public object ConvertBack(object value, Type t, object p, System.Globalization.CultureInfo c) => throw new NotSupportedException();
 }

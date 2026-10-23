@@ -1,5 +1,9 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="clr-namespace:Prumo.UI">
+
+    <!-- Placeholder text over an empty TextBox -->
+    <ui:EmptyToVisibleConverter x:Key="EmptyToVisible"/>
 
     <!-- Palette -->
     <Color x:Key="BgColor">#0B1120</Color>

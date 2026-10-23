@@ -60,6 +60,7 @@ public partial class MainWindow : Window
         LoadProBalance();
         LoadPerformance();
         LoadRules();
+        LoadAutomation();
         LoadSettings();
 
         Themes.Changed += () =>
@@ -105,6 +106,8 @@ public partial class MainWindow : Window
         PageLog.Visibility = tag == "Log" ? Visibility.Visible : Visibility.Collapsed;
         PagePerformance.Visibility = tag == "Performance" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Performance") LoadPerformance();
+        PageAutomation.Visibility = tag == "Automation" ? Visibility.Visible : Visibility.Collapsed;
+        if (tag == "Automation") LoadAutomation();
         PageSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Settings") LoadSettings();
     }
@@ -161,10 +164,10 @@ public partial class MainWindow : Window
             if (p.Pid == 0) continue;
             if (filter.Length > 0 && !p.Exe.Contains(filter, StringComparison.OrdinalIgnoreCase) && !p.Pid.ToString().StartsWith(filter)) continue;
             seen.Add(p.Pid);
-            if (!_rowByPid.TryGetValue(p.Pid, out var row) || row.Exe != p.Exe)
+            if (!_rowByPid.TryGetValue(p.Pid, out var row) || row.CreateTime != p.CreateTime)
             {
                 if (row is not null) _rows.Remove(row);
-                row = new ProcessRow(p.Pid, p.Exe);
+                row = new ProcessRow(p.Pid, p.Exe, p.CreateTime);
                 _rowByPid[p.Pid] = row;
                 _rows.Add(row);
             }
@@ -214,6 +217,13 @@ public partial class MainWindow : Window
         if (_engine.Last is { } s) UpdateProcesses(s);
     }
 
+    // Right-click selects the row under the mouse first, so the menu acts on what was clicked.
+    void ProcList_RightDown(object sender, MouseButtonEventArgs e)
+    {
+        for (var d = e.OriginalSource as DependencyObject; d is not null && d != ProcList; d = VisualTreeHelper.GetParent(d))
+            if (d is ListBoxItem item) { item.IsSelected = true; return; }
+    }
+
     void ProcList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         if (ProcList.SelectedItem is not ProcessRow row) { e.Handled = true; return; }
@@ -233,18 +243,23 @@ public partial class MainWindow : Window
             return m;
         }
 
+        // Realtime can starve the mouse, the keyboard and Windows itself: ask first.
+        bool Confirm(CpuPriority p) => p != CpuPriority.Realtime || MessageBox.Show(
+            $"Tempo real pode travar o mouse, o teclado e o próprio Windows se {exe} usar muita CPU. Usar mesmo assim?",
+            "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
         var now = Item("Prioridade de CPU agora");
         foreach (var p in Enum.GetValues<CpuPriority>())
             now.Items.Add(Item(Names.Of(p), () =>
             {
-                if (!_engine.SetPriorityNow(row.Pid, p)) Toast("Sem permissão para mudar a prioridade de " + exe);
+                if (Confirm(p) && !_engine.SetPriorityNow(row.Pid, row.CreateTime, p)) Toast("Sem permissão para mudar a prioridade de " + exe);
             }));
         ProcMenu.Items.Add(now);
 
         var always = Item("Prioridade de CPU sempre");
         always.Items.Add(Item("Não alterar", () => EditRule(exe, r => r.CpuPriority = null), rule?.CpuPriority is null));
         foreach (var p in Enum.GetValues<CpuPriority>())
-            always.Items.Add(Item(Names.Of(p), () => EditRule(exe, r => r.CpuPriority = p), rule?.CpuPriority == p));
+            always.Items.Add(Item(Names.Of(p), () => { if (Confirm(p)) EditRule(exe, r => r.CpuPriority = p); }, rule?.CpuPriority == p));
         ProcMenu.Items.Add(always);
 
         var io = Item("Prioridade de I/O sempre");
@@ -287,6 +302,28 @@ public partial class MainWindow : Window
 
         ProcMenu.Items.Add(Item("Excluir do ProBalance", () => EditRule(exe, r => r.ProBalanceExcluded = !r.ProBalanceExcluded),
             rule?.ProBalanceExcluded == true));
+        ProcMenu.Items.Add(Item("Impedir suspensão enquanto roda", () => EditRule(exe, r => r.PreventSleep = !r.PreventSleep),
+            rule?.PreventSleep == true));
+
+        var cfg = _engine.Config;
+        bool keep = cfg.KeepRunning.Contains(exe, StringComparer.OrdinalIgnoreCase);
+        ProcMenu.Items.Add(Item("Manter rodando", () =>
+        {
+            if (keep) cfg.KeepRunning.RemoveAll(k => k.Equals(exe, StringComparison.OrdinalIgnoreCase)); else cfg.KeepRunning.Add(exe);
+            _engine.ConfigChanged(); LoadAutomation();
+        }, keep));
+        ProcMenu.Items.Add(Item("Vigiar este programa...", () =>
+        {
+            cfg.Watchdog.Add(new WatchdogRule { Exe = exe });
+            _engine.ConfigChanged(); LoadAutomation();
+            foreach (var rb in Nav.Children.OfType<RadioButton>()) if ((string)rb.Tag == "Automation") rb.IsChecked = true;
+        }));
+        ProcMenu.Items.Add(Item("Proibir este programa", () =>
+        {
+            if (MessageBox.Show($"Fechar {exe} agora e sempre que ele abrir?", "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            if (!cfg.Disallowed.Contains(exe, StringComparer.OrdinalIgnoreCase)) cfg.Disallowed.Add(exe);
+            _engine.ConfigChanged(); LoadAutomation();
+        }));
 
         ProcMenu.Items.Add(Item("Tratar como jogo (regra para a pasta dele)", () =>
         {
@@ -306,7 +343,7 @@ public partial class MainWindow : Window
         ProcMenu.Items.Add(Item("Finalizar processo", () =>
         {
             if (MessageBox.Show($"Finalizar {exe} (PID {row.Pid})?", "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes
-                && !Engine.Kill(row.Pid))
+                && !Engine.KillVerified(row.Pid, row.CreateTime))
                 Toast("Não foi possível finalizar " + exe);
         }));
     }
@@ -319,7 +356,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() != true) return;
         if (dlg.Always)
             EditRule(row.Exe, r => r.Affinity = dlg.Mask == Core.Affinity.AllCpus ? null : Core.Affinity.Format(dlg.Mask));
-        if (!_engine.SetAffinityNow(row.Pid, dlg.Mask)) Toast("Sem permissão para mudar a afinidade de " + row.Exe);
+        if (!_engine.SetAffinityNow(row.Pid, row.CreateTime, dlg.Mask)) Toast("Sem permissão para mudar a afinidade de " + row.Exe);
     }
 
     void EditRule(string exe, Action<ProcessRule> edit)
@@ -452,9 +489,9 @@ public partial class MainWindow : Window
         PerfMode.IsChecked = c.PerformanceMode;
         var plans = PowerPlans.List().Select(p => new Option<string>(p.Name, p.Name)).ToList();
         PerfPlan.ItemsSource = plans;
+        var fallback = PowerPlans.DefaultPerformancePlanName();
         PerfPlan.SelectedItem = plans.FirstOrDefault(p => p.Value == c.PerformancePlan)
-            ?? plans.FirstOrDefault(p => p.Value!.Contains("Highest", StringComparison.OrdinalIgnoreCase) || p.Value!.Contains("Ultimate", StringComparison.OrdinalIgnoreCase))
-            ?? plans.FirstOrDefault();
+            ?? plans.FirstOrDefault(p => p.Value == fallback) ?? plans.FirstOrDefault();
 
         FgBoost.IsChecked = c.ForegroundBoost.Enabled;
         var prios = new[] { CpuPriority.AboveNormal, CpuPriority.High }.Select(p => new Option<CpuPriority?>(Names.Of(p), p)).ToList();
@@ -476,14 +513,20 @@ public partial class MainWindow : Window
         _loading = false;
     }
 
-    void PerfPlan_Changed(object sender, SelectionChangedEventArgs e) => PerfChanged(sender, e);
+    void PerfPlan_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        _engine.Config.PerformancePlan = (PerfPlan.SelectedItem as Option<string>)?.Value;
+        PerfChanged(sender, e);
+    }
 
     void PerfChanged(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
         var c = _engine.Config;
         c.PerformanceMode = PerfMode.IsChecked == true;
-        c.PerformancePlan = (PerfPlan.SelectedItem as Option<string>)?.Value;
+        // Turning the mode on without ever picking a plan: use what the combo shows.
+        if (c.PerformanceMode) c.PerformancePlan ??= (PerfPlan.SelectedItem as Option<string>)?.Value;
         c.ForegroundBoost.Enabled = FgBoost.IsChecked == true;
         c.ForegroundBoost.Priority = (FgBoostPriority.SelectedItem as Option<CpuPriority?>)?.Value ?? CpuPriority.AboveNormal;
         c.ForegroundBoost.OnlyNormal = FgBoostOnlyNormal.IsChecked == true;
@@ -565,16 +608,47 @@ public partial class MainWindow : Window
         LogCount.Text = $"{_logRows.Count} eventos";
     }
 
-    bool LogMatches(LogEntry e) => (LogFilter.SelectedIndex) switch
+    bool LogMatches(LogEntry e)
     {
-        1 => e.Kind is EventKind.Restrained or EventKind.Restored,
-        2 => e.Kind is EventKind.RuleApplied or EventKind.RuleFailed,
-        3 => e.Kind == EventKind.PowerPlan,
-        4 => e.Kind == EventKind.RuleFailed,
-        _ => true,
-    };
+        var q = LogSearch?.Text.Trim() ?? "";
+        if (q.Length > 0 && !e.Exe.Contains(q, StringComparison.OrdinalIgnoreCase) && !e.Text.Contains(q, StringComparison.OrdinalIgnoreCase)
+            && e.Pid.ToString() != q) return false;
+        return LogFilter.SelectedIndex switch
+        {
+            1 => e.Kind is EventKind.Restrained or EventKind.Restored,
+            2 => e.Kind is EventKind.RuleApplied or EventKind.RuleFailed,
+            3 => e.Kind == EventKind.PowerPlan,
+            4 => e.Kind == EventKind.RuleFailed,
+            _ => true,
+        };
+    }
 
-    void LogFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    static string LogLine(LogEntry e) => $"{e.Time:yyyy-MM-dd HH:mm:ss}  {e.Kind,-11}  {e.Pid,6}  {e.Exe}  {e.Text}";
+
+    void ExportLog_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { FileName = $"prumo-registro-{DateTime.Now:yyyyMMdd-HHmm}.txt", Filter = "Texto (*.txt)|*.txt" };
+        if (dlg.ShowDialog(this) != true) return;
+        File.WriteAllLines(dlg.FileName, _logRows.Reverse().Select(r => LogLine(r.Entry)));
+    }
+
+    void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var c = _engine.Config;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Prumo {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)}");
+        sb.AppendLine($"{System.Runtime.InteropServices.RuntimeInformation.OSDescription} · {Environment.ProcessorCount} CPUs lógicas · .NET {Environment.Version}");
+        sb.AppendLine($"Plano ativo: {PowerPlans.ActiveName() ?? "?"}");
+        sb.AppendLine($"Regras: {c.Rules.Count} · proibidos: {c.Disallowed.Count} · manter rodando: {c.KeepRunning.Count} · vigias: {c.Watchdog.Count}");
+        sb.AppendLine($"ProBalance: {(c.ProBalance.Enabled ? "ligado" : "desligado")} · modo desempenho: {(c.PerformanceMode ? "ligado" : "desligado")} · SmartTrim: {(c.SmartTrim.TrimWorkingSets ? "ligado" : "desligado")} · IdleSaver: {(c.IdleSaver.Enabled ? "ligado" : "desligado")}");
+        sb.AppendLine();
+        sb.AppendLine("Últimos eventos:");
+        foreach (var entry in _log.Snapshot().TakeLast(200)) sb.AppendLine(LogLine(entry));
+        try { Clipboard.SetText(sb.ToString()); _log.Add(EventKind.Info, 0, "prumo.exe", "Diagnóstico copiado para a área de transferência"); }
+        catch { MessageBox.Show("Não consegui usar a área de transferência agora. Tente de novo.", "Prumo"); }
+    }
+
+    void LogFilter_SelectionChanged(object sender, RoutedEventArgs e)
     {
         if (LogList is null) return;
         _logRows.Clear();
@@ -640,6 +714,140 @@ public partial class MainWindow : Window
     {
         if (_loading || SetDefaultPlan.SelectedItem is not Option<string> o) return;
         _engine.Config.DefaultPowerPlan = o.Value;
+        _engine.ConfigChanged();
+    }
+
+    void ExportConfig_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { FileName = $"prumo-config-{DateTime.Now:yyyyMMdd}.json", Filter = "Configuração do Prumo (*.json)|*.json" };
+        if (dlg.ShowDialog(this) != true) return;
+        File.WriteAllText(dlg.FileName, _engine.Config.ToJson());
+        _log.Add(EventKind.Info, 0, "prumo.exe", "Configuração exportada para " + dlg.FileName);
+    }
+
+    void ImportConfig_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Configuração do Prumo (*.json)|*.json" };
+        if (dlg.ShowDialog(this) != true) return;
+        AppConfig imported;
+        try { imported = AppConfig.FromJson(File.ReadAllText(dlg.FileName)); }
+        catch (Exception ex) { MessageBox.Show("Arquivo inválido: " + ex.Message, "Prumo", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        if (MessageBox.Show($"Importar {imported.Rules.Count} regras e todos os ajustes de {Path.GetFileName(dlg.FileName)}? A configuração atual será substituída.",
+                "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        ReplaceConfig(imported, "Configuração importada de " + dlg.FileName);
+    }
+
+    void ResetConfig_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("Apagar todas as regras e voltar todos os ajustes ao padrão? Exporte antes se quiser guardar a configuração atual.",
+                "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        ReplaceConfig(new AppConfig(), "Configuração restaurada para o padrão");
+    }
+
+    void ReplaceConfig(AppConfig cfg, string message)
+    {
+        _engine.ReplaceConfig(cfg);
+        Themes.Apply(Themes.Parse(cfg.Theme));
+        LoadRules(); LoadProBalance(); LoadPerformance(); LoadAutomation(); LoadSettings();
+        _log.Add(EventKind.Info, 0, "prumo.exe", message);
+    }
+
+    // ------------------------------------------------------------ automation
+
+    void LoadAutomation()
+    {
+        _loading = true;
+        var c = _engine.Config;
+        DisallowedList.ItemsSource = c.Disallowed.ToList();
+        AutoLogOnly.IsChecked = c.DisallowedLogOnly;
+        KeepList.ItemsSource = c.KeepRunning.ToList();
+        WatchdogList.ItemsSource = c.Watchdog.Select(w => new WatchdogRow(w, RuleEdited)).ToList();
+        WatchdogEmpty.Visibility = c.Watchdog.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        IdleOn.IsChecked = c.IdleSaver.Enabled;
+        IdleMinutes.Text = c.IdleSaver.IdleMinutes.ToString();
+        var plans = PowerPlans.List().Select(p => new Option<string>(p.Name, p.Name)).ToList();
+        IdlePlan.ItemsSource = plans;
+        // Default: the power saving plan, matched by its GUID (names are localized).
+        var saver = PowerPlans.List().FirstOrDefault(p => p.Id == new Guid("a1841308-3541-4fab-bc81-f71556f20b4a"))?.Name;
+        IdlePlan.SelectedItem = plans.FirstOrDefault(p => p.Value == c.IdleSaver.IdlePlan) ?? plans.FirstOrDefault(p => p.Value == saver) ?? plans.FirstOrDefault();
+        _loading = false;
+    }
+
+    /// <summary>Normalizes what the user typed in the "add" boxes: a folder becomes "folder\*", a bare name gets ".exe".</summary>
+    static string? ExeEntry(TextBox box)
+    {
+        var t = box.Text.Trim().Trim('"');
+        box.Text = "";
+        if (t.Length == 0) return null;
+        if (Directory.Exists(t)) return t.TrimEnd('\\') + @"\*";
+        if (!t.Contains('*') && !t.Contains('\\') && !t.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) t += ".exe";
+        return t.Contains('\\') ? t : t.ToLowerInvariant();
+    }
+
+    void AddTo(List<string> list, TextBox box)
+    {
+        if (ExeEntry(box) is not { } exe || list.Contains(exe, StringComparer.OrdinalIgnoreCase)) return;
+        list.Add(exe);
+        _engine.ConfigChanged();
+        LoadAutomation();
+    }
+
+    void RemoveFrom(List<string> list, object sender)
+    {
+        if (((FrameworkElement)sender).Tag is not string exe) return;
+        list.RemoveAll(x => x.Equals(exe, StringComparison.OrdinalIgnoreCase));
+        _engine.ConfigChanged();
+        LoadAutomation();
+    }
+
+    void AddDisallowed_Click(object sender, RoutedEventArgs e)
+    {
+        var exe = DisallowedBox.Text.Trim();
+        if (exe.Length > 0 && MessageBox.Show($"Fechar {exe} sempre que ele abrir?", "Prumo", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        AddTo(_engine.Config.Disallowed, DisallowedBox);
+    }
+    void AddDisallowed_ClickKey(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) AddDisallowed_Click(sender, e); }
+    void RemoveDisallowed_Click(object sender, RoutedEventArgs e) => RemoveFrom(_engine.Config.Disallowed, sender);
+    void AddKeep_Click(object sender, RoutedEventArgs e) => AddTo(_engine.Config.KeepRunning, KeepBox);
+    void AddKeep_ClickKey(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) AddKeep_Click(sender, e); }
+    void RemoveKeep_Click(object sender, RoutedEventArgs e) => RemoveFrom(_engine.Config.KeepRunning, sender);
+
+    void AutoLogOnly_Click(object sender, RoutedEventArgs e)
+    {
+        _engine.Config.DisallowedLogOnly = AutoLogOnly.IsChecked == true;
+        _engine.ConfigChanged();
+    }
+
+    void AddWatchdog_Click(object sender, RoutedEventArgs e)
+    {
+        _engine.Config.Watchdog.Add(new WatchdogRule { Exe = "programa.exe" });
+        _engine.ConfigChanged();
+        LoadAutomation();
+    }
+
+    void RemoveWatchdog_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is not WatchdogRow row) return;
+        _engine.Config.Watchdog.Remove(row.Rule);
+        _engine.ConfigChanged();
+        LoadAutomation();
+    }
+
+    void IdleChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var idle = _engine.Config.IdleSaver;
+        idle.Enabled = IdleOn.IsChecked == true;
+        idle.IdleMinutes = (int)Num(IdleMinutes, idle.IdleMinutes, 1, 240);
+        idle.IdlePlan ??= (IdlePlan.SelectedItem as Option<string>)?.Value;
+        _engine.ConfigChanged();
+        LoadAutomation();
+    }
+
+    void IdlePlan_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        _engine.Config.IdleSaver.IdlePlan = (IdlePlan.SelectedItem as Option<string>)?.Value;
         _engine.ConfigChanged();
     }
 

@@ -172,6 +172,57 @@ internal static unsafe class Native
         finally { CloseHandle(token); }
     }
 
+    public const uint PROCESS_TERMINATE = 0x0001;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool TerminateProcess(nint h, uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetProcessTimes(nint h, out long creation, out long exit, out long kernel, out long user);
+
+    /// <summary>True when the handle still belongs to the process created at <paramref name="createTime"/> (not a reused PID).</summary>
+    public static bool IsSameProcess(nint h, long createTime) =>
+        createTime == 0 || (GetProcessTimes(h, out var c, out _, out _, out _) && c == createTime);
+
+    public const int ProcessCommandLineInformation = 60;
+
+    [DllImport("ntdll.dll")]
+    public static extern int NtQueryInformationProcess(nint h, int cls, byte* buf, int size, out int ret);
+
+    /// <summary>Full command line (Windows 8.1+); needs PROCESS_QUERY_LIMITED_INFORMATION.</summary>
+    public static string? CommandLine(nint h)
+    {
+        NtQueryInformationProcess(h, ProcessCommandLineInformation, null, 0, out int len);
+        if (len <= 0 || len > 1 << 20) return null;
+        var buf = new byte[len];
+        fixed (byte* b = buf)
+        {
+            if (NtQueryInformationProcess(h, ProcessCommandLineInformation, b, len, out _) < 0) return null;
+            // UNICODE_STRING { ushort Length; ushort MaximumLength; (padding) char* Buffer } followed by the text.
+            ushort bytes = *(ushort*)b;
+            char* text = *(char**)(b + 8);
+            return bytes == 0 || text == null ? null : new string(text, 0, bytes / 2);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LASTINPUTINFO { public uint Size; public uint Time; }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+
+    /// <summary>Milliseconds since the last keyboard/mouse input in this session (wrap-safe).</summary>
+    public static uint IdleMilliseconds()
+    {
+        var li = new LASTINPUTINFO { Size = (uint)sizeof(LASTINPUTINFO) };
+        return GetLastInputInfo(ref li) ? unchecked((uint)Environment.TickCount - li.Time) : 0;
+    }
+
+    public const uint ES_CONTINUOUS = 0x80000000, ES_SYSTEM_REQUIRED = 0x00000001;
+
+    [DllImport("kernel32.dll")]
+    public static extern uint SetThreadExecutionState(uint flags);
+
     public static string? ImagePath(nint h)
     {
         char* buf = stackalloc char[1024];

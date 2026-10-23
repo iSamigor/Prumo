@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Prumo;
 
@@ -9,6 +10,10 @@ namespace Prumo;
 public static class Autostart
 {
     const string TaskName = "Prumo";
+
+    // Task Scheduler COM: TASK_CREATE_OR_UPDATE and TASK_LOGON_INTERACTIVE_TOKEN (taskschd.h).
+    const int TaskCreateOrUpdate = 6;
+    const int TaskLogonInteractiveToken = 3;
 
     public static bool IsEnabled() => Run("schtasks.exe", $"/Query /TN \"{TaskName}\"").code == 0;
 
@@ -34,14 +39,53 @@ public static class Autostart
               <Actions Context="Author"><Exec><Command>{Escape(exe)}</Command><Arguments>--tray</Arguments></Exec></Actions>
             </Task>
             """;
-        var file = Path.Combine(Path.GetTempPath(), "prumo-task.xml");
-        File.WriteAllText(file, xml, System.Text.Encoding.Unicode);
         try
         {
-            var (code, output) = Run("schtasks.exe", $"/Create /F /TN \"{TaskName}\" /XML \"{file}\"");
-            return code == 0 ? null : "Não consegui criar a tarefa de inicialização:\n" + output;
+            // Register from memory: a temp XML file would leave a window where another process running
+            // as this user could swap it before the elevated Task Scheduler reads it.
+            Register(xml, user);
+            return null;
         }
-        finally { File.Delete(file); }
+        catch (UnauthorizedAccessException)
+        {
+            // Only an elevated process may register a task that runs with highest privileges.
+            return "Não consegui criar a tarefa de inicialização: é preciso executar o Prumo como administrador.";
+        }
+        catch (Exception ex)
+        {
+            return "Não consegui criar a tarefa de inicialização:\n" + ex.Message;
+        }
+    }
+
+    /// <summary>Registers the logon task through the Task Scheduler COM API, with no temp file involved.</summary>
+    static void Register(string xml, string user)
+    {
+        var type = Type.GetTypeFromProgID("Schedule.Service")
+                   ?? throw new InvalidOperationException("O Agendador de Tarefas não está disponível.");
+        object? service = null, folder = null, task = null;
+        try
+        {
+            service = Activator.CreateInstance(type)
+                      ?? throw new InvalidOperationException("Não consegui abrir o Agendador de Tarefas.");
+            dynamic svc = service;
+            svc.Connect();
+            folder = svc.GetFolder("\\");
+            // RegisterTask takes the XML itself; the task service parses it as we hand it over.
+            task = ((ITaskFolder)folder).RegisterTask(
+                TaskName, xml, TaskCreateOrUpdate, user, null, TaskLogonInteractiveToken, null);
+        }
+        finally
+        {
+            Release(task);
+            Release(folder);
+            Release(service);
+        }
+    }
+
+    static void Release(object? comObject)
+    {
+        try { if (comObject is not null) Marshal.FinalReleaseComObject(comObject); }
+        catch { /* already gone */ }
     }
 
     public static string? Disable()
@@ -63,4 +107,23 @@ public static class Autostart
         p.WaitForExit(10_000);
         return (p.ExitCode, output.Trim());
     }
+}
+
+/// <summary>
+/// The slice of ITaskFolder we call. Late binding cannot marshal RegisterTask's VARIANT
+/// parameters ("Could not convert argument"), so the folder call goes through this typed
+/// IDispatch interface; the rest of the COM surface stays dynamic.
+/// </summary>
+[ComImport, Guid("8cfac062-a080-4c15-9a88-aa7c2af80dfc"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface ITaskFolder
+{
+    [DispId(10)]
+    object RegisterTask(
+        [MarshalAs(UnmanagedType.BStr)] string path,
+        [MarshalAs(UnmanagedType.BStr)] string xmlText,
+        int flags,
+        [MarshalAs(UnmanagedType.Struct)] object? userId,
+        [MarshalAs(UnmanagedType.Struct)] object? password,
+        int logonType,
+        [MarshalAs(UnmanagedType.Struct)] object? sddl);
 }

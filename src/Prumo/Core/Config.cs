@@ -45,6 +45,8 @@ public sealed class ProcessRule
     public CpuLimit? CpuLimit { get; set; }
     /// <summary>Executable names (wildcards allowed) a pattern rule skips, e.g. tools that live in a game library.</summary>
     public List<string>? Except { get; set; }
+    /// <summary>Keep the PC from sleeping while this process runs (downloads, renders).</summary>
+    public bool PreventSleep { get; set; }
 
     /// <summary>Non-games found in game libraries: Wallpaper Engine, crash reporters, VR runtimes, redistributable installers.</summary>
     public static readonly string[] NotGames =
@@ -61,7 +63,30 @@ public sealed class ProcessRule
     [JsonIgnore] public bool IsEmpty =>
         CpuPriority is null && IoPriority is null && GpuPriority is null && Affinity is null &&
         Efficiency is null && PowerPlan is null && !ProBalanceExcluded && MemoryPriority is null &&
-        CpuSets is null && DisablePriorityBoost is null && GpuPreference is null && CpuLimit is null;
+        CpuSets is null && DisablePriorityBoost is null && GpuPreference is null && CpuLimit is null && !PreventSleep;
+}
+
+public enum WatchMetric { Cpu, MemoryMb }
+public enum WatchAction { Log, LowerPriority, TrimMemory, Restart, Kill }
+
+/// <summary>"When Exe stays over Threshold (CPU % or MB of RAM) for ForSeconds, do Action."</summary>
+public sealed class WatchdogRule
+{
+    public string Exe { get; set; } = "";
+    public WatchMetric Metric { get; set; } = WatchMetric.Cpu;
+    public double Threshold { get; set; } = 50;
+    public int ForSeconds { get; set; } = 30;
+    public WatchAction Action { get; set; } = WatchAction.Log;
+    public bool Enabled { get; set; } = true;
+}
+
+public sealed class IdleSaverSettings
+{
+    public bool Enabled { get; set; }
+    /// <summary>Minutes without keyboard/mouse input before the PC counts as idle.</summary>
+    public int IdleMinutes { get; set; } = 5;
+    /// <summary>Power plan while idle (friendly name).</summary>
+    public string? IdlePlan { get; set; }
 }
 
 public sealed class ForegroundBoostSettings
@@ -111,7 +136,18 @@ public sealed class ProBalanceSettings
 
 public sealed class AppConfig
 {
+    public const int CurrentSchema = 1;
+    /// <summary>Format version of config.json, so later versions can migrate old files.</summary>
+    public int SchemaVersion { get; set; } = CurrentSchema;
     public List<ProcessRule> Rules { get; set; } = new();
+    /// <summary>Executables closed as soon as they start (wildcards allowed).</summary>
+    public List<string> Disallowed { get; set; } = new();
+    /// <summary>Only log disallowed processes instead of closing them.</summary>
+    public bool DisallowedLogOnly { get; set; }
+    /// <summary>Executables started again when they close (wildcards allowed).</summary>
+    public List<string> KeepRunning { get; set; } = new();
+    public List<WatchdogRule> Watchdog { get; set; } = new();
+    public IdleSaverSettings IdleSaver { get; set; } = new();
     public ProBalanceSettings ProBalance { get; set; } = new();
     /// <summary>Plan to go back to when no "modo jogo" process runs. Null = the plan active before.</summary>
     public string? DefaultPowerPlan { get; set; }
@@ -153,7 +189,7 @@ public sealed class AppConfig
             // Still unreadable: run on the imported/default rules for now, but never overwrite the user's file.
             if (text is null) return ProcessLassoImport.TryImport() ?? new AppConfig();
 
-            try { return JsonSerializer.Deserialize<AppConfig>(text, Json) ?? new(); }
+            try { return FromJson(text); }
             catch (JsonException) { File.Move(FilePath, FilePath + ".bad", true); }   // keep the broken file for inspection
         }
 
@@ -162,14 +198,67 @@ public sealed class AppConfig
         return cfg;
     }
 
+    /// <summary>Parses and validates a config file (also used for "Importar configuração"). Throws JsonException.</summary>
+    public static AppConfig FromJson(string text)
+    {
+        var cfg = JsonSerializer.Deserialize<AppConfig>(text, Json) ?? throw new JsonException("arquivo vazio");
+        if (cfg.SchemaVersion > CurrentSchema) throw new JsonException($"feito por uma versão mais nova do Prumo (formato {cfg.SchemaVersion})");
+        cfg.Validate();
+        return cfg;
+    }
+
+    public string ToJson() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>Clamps every number to a sane range and drops broken entries, so a hand-edited file can't hurt the engine.</summary>
+    public void Validate()
+    {
+        SchemaVersion = CurrentSchema;
+        Rules ??= new(); Disallowed ??= new(); KeepRunning ??= new(); Watchdog ??= new();
+        ProBalance ??= new(); ForegroundBoost ??= new(); SmartTrim ??= new(); IdleSaver ??= new();
+        Rules.RemoveAll(r => r is null || string.IsNullOrWhiteSpace(r.Exe));
+        foreach (var r in Rules)
+            if (r.CpuLimit is { } l)
+            {
+                l.ThresholdPercent = Math.Clamp(l.ThresholdPercent, 1, 100);
+                l.Cores = Math.Clamp(l.Cores, 1, Environment.ProcessorCount);
+                l.DurationMs = Math.Clamp(l.DurationMs, 1000, 3_600_000);
+            }
+        Disallowed = Disallowed.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        KeepRunning = KeepRunning.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        Watchdog.RemoveAll(w => w is null || string.IsNullOrWhiteSpace(w.Exe));
+        foreach (var w in Watchdog)
+        {
+            w.Threshold = Math.Clamp(w.Threshold, 0, w.Metric == WatchMetric.Cpu ? 100 : 1 << 20);
+            w.ForSeconds = Math.Clamp(w.ForSeconds, 1, 86_400);
+        }
+
+        var pb = ProBalance;
+        pb.Exclusions ??= new();
+        pb.TotalCpuThreshold = Math.Clamp(pb.TotalCpuThreshold, 0, 100);
+        pb.ProcessCpuThreshold = Math.Clamp(pb.ProcessCpuThreshold, 0.1, 100);
+        pb.ProcessCpuRestore = Math.Clamp(pb.ProcessCpuRestore, 0, 100);
+        pb.TimeOverQuotaMs = Math.Clamp(pb.TimeOverQuotaMs, 0, 600_000);
+        pb.MinRestraintMs = Math.Clamp(pb.MinRestraintMs, 0, 3_600_000);
+        pb.MaxRestraintMs = Math.Clamp(pb.MaxRestraintMs, 0, 86_400_000);
+
+        var st = SmartTrim;
+        st.Exclusions ??= new();
+        st.MinRamLoadPercent = Math.Clamp(st.MinRamLoadPercent, 1, 100);
+        st.MinProcessMb = Math.Clamp(st.MinProcessMb, 1, 65_536);
+        st.IntervalMinutes = Math.Clamp(st.IntervalMinutes, 1, 1440);
+        st.PurgeBelowFreeMb = Math.Clamp(st.PurgeBelowFreeMb, 64, 65_536);
+
+        IdleSaver.IdleMinutes = Math.Clamp(IdleSaver.IdleMinutes, 1, 240);
+        UpdateIntervalMs = Math.Clamp(UpdateIntervalMs, 250, 10_000);
+        if (ForegroundBoost.Priority is not (CpuPriority.AboveNormal or CpuPriority.High)) ForegroundBoost.Priority = CpuPriority.AboveNormal;
+        TimerResolution100ns = TimerResolution100ns is 0 or 5_000 or 10_000 ? TimerResolution100ns : 0;
+    }
+
     public AppConfig Clone() => JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(this, Json), Json)!;
 
     public void Save()
     {
-        Directory.CreateDirectory(Dir);
-        var tmp = FilePath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json));
-        File.Move(tmp, FilePath, true);
+        SecureStore.WriteAllTextAtomic(FilePath, JsonSerializer.Serialize(this, Json));
     }
 
     public ProcessRule? RuleFor(string exe) =>
@@ -193,7 +282,8 @@ public sealed class RuleMatcher
 
     public RuleMatcher(IEnumerable<ProcessRule> rules)
     {
-        foreach (var r in rules)
+        // Overlapping patterns: the most specific one (most literal characters) wins, whatever the list order.
+        foreach (var r in rules.OrderByDescending(r => r.IsPattern ? r.Exe.Count(c => c is not ('*' or '?')) : int.MaxValue))
         {
             if (!r.IsPattern) { _byName.TryAdd(r.Exe, r); continue; }
             var except = r.Except is { Count: > 0 } ex ? Wildcard("(" + string.Join(")|(", ex.Select(ToRegex)) + ")") : null;

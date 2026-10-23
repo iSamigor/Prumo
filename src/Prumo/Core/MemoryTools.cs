@@ -29,13 +29,13 @@ public static class MemoryTools
     }
 
     /// <summary>Empties the working set of one process without touching its private commit.</summary>
-    public static bool TrimWorkingSet(int pid)
+    public static bool TrimWorkingSet(int pid, long createTime = 0)
     {
         nint handle = 0;
         try
         {
             handle = OpenProcess(ProcessSetQuota | ProcessQueryLimitedInformation, false, pid);
-            if (handle == 0) return false;
+            if (handle == 0 || !Native.IsSameProcess(handle, createTime)) return false;   // queued a few ticks ago: PID may be reused
             if (EmptyWorkingSet(handle)) return true;
             // Some builds refuse EmptyWorkingSet with only limited query rights; -1/-1 empties the set.
             return SetProcessWorkingSetSizeEx(handle, -1, -1, 0);

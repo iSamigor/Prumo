@@ -37,7 +37,7 @@
                     </StackPanel>
                 </Border>
 
-                <StackPanel>
+                <StackPanel x:Name="Nav">
                     <RadioButton x:Name="NavOverview" Style="{StaticResource NavButton}" GroupName="nav" IsChecked="True" Checked="Nav_Checked" Tag="Overview">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Visão geral" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
@@ -52,6 +52,9 @@
                     </RadioButton>
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Performance">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xEC4A;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Desempenho" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Automation">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE945;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Automação" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Log">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE81C;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Registro" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
@@ -210,7 +213,7 @@
                             <Button Grid.Column="4" Style="{StaticResource HeaderButton}" Content="Prioridade" Tag="prio" Click="Sort_Click"/>
                             <TextBlock Grid.Column="5" Text="Estado" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                         </Grid>
-                        <ListBox x:Name="ProcList" Grid.Row="1" ContextMenuOpening="ProcList_ContextMenuOpening">
+                        <ListBox x:Name="ProcList" Grid.Row="1" ContextMenuOpening="ProcList_ContextMenuOpening" PreviewMouseRightButtonDown="ProcList_RightDown">
                             <ListBox.ContextMenu>
                                 <ContextMenu x:Name="ProcMenu"/>
                             </ListBox.ContextMenu>
@@ -356,6 +359,7 @@
                                                 </StackPanel>
                                                 <StackPanel Margin="6,0,6,0" VerticalAlignment="Bottom">
                                                     <CheckBox Style="{StaticResource Switch}" Content="Excluir do ProBalance" IsChecked="{Binding Excluded}" Margin="0,0,0,6"/>
+                                                    <CheckBox Style="{StaticResource Switch}" Content="Impedir suspensão" IsChecked="{Binding PreventSleep}" Margin="0,0,0,6" ToolTip="O PC não entra em suspensão enquanto este programa estiver aberto (downloads, renderização)"/>
                                                 </StackPanel>
                                             </UniformGrid>
                                             <StackPanel Grid.Row="2" Margin="0,12,0,0">
@@ -518,23 +522,177 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- ===== Automation ===== -->
+            <ScrollViewer x:Name="PageAutomation" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="28,0,28,24" MaxWidth="900" HorizontalAlignment="Left">
+                    <TextBlock Text="Automação" Style="{StaticResource H1}"/>
+                    <TextBlock Text="O que o Prumo faz sozinho quando um programa abre, fecha ou passa do limite" Style="{StaticResource Muted}" FontSize="13" Margin="0,4,0,18"/>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <CheckBox x:Name="AutoLogOnly" DockPanel.Dock="Right" Style="{StaticResource Switch}" Content="Só registrar" Click="AutoLogOnly_Click" ToolTip="Não fecha: só anota no Registro quando um desses programas abrir"/>
+                                <TextBlock Text="Processos proibidos" Style="{StaticResource H2}"/>
+                            </DockPanel>
+                            <TextBlock Text="Fechados assim que abrem. Vale nome (app.exe), padrão (*updater*.exe) ou pasta (C:\Pasta\*). Serviços e processos do Windows nunca são fechados." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Grid Width="320">
+                                    <TextBox x:Name="DisallowedBox" KeyDown="AddDisallowed_ClickKey"/>
+                                    <TextBlock Text="programa.exe" Style="{StaticResource Muted}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                               Visibility="{Binding Text, ElementName=DisallowedBox, Converter={StaticResource EmptyToVisible}}"/>
+                                </Grid>
+                                <Button Margin="8,0,0,0" Content="Adicionar" Click="AddDisallowed_Click"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="DisallowedList" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8" Padding="10,4,4,4" Margin="0,0,8,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12"/>
+                                                <Button Style="{StaticResource GhostButton}" Margin="4,0,0,0" Padding="6,2" Tag="{Binding}" Click="RemoveDisallowed_Click" ToolTip="Remover">
+                                                    <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="Manter rodando" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Se um desses programas fechar (ou travar e cair), o Prumo abre de novo com os mesmos argumentos, como o seu usuário (não como administrador). Para de tentar se fechar 5 vezes em 10 minutos." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Grid Width="320">
+                                    <TextBox x:Name="KeepBox" KeyDown="AddKeep_ClickKey"/>
+                                    <TextBlock Text="programa.exe" Style="{StaticResource Muted}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                               Visibility="{Binding Text, ElementName=KeepBox, Converter={StaticResource EmptyToVisible}}"/>
+                                </Grid>
+                                <Button Margin="8,0,0,0" Content="Adicionar" Click="AddKeep_Click"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="KeepList" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8" Padding="10,4,4,4" Margin="0,0,8,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12"/>
+                                                <Button Style="{StaticResource GhostButton}" Margin="4,0,0,0" Padding="6,2" Tag="{Binding}" Click="RemoveKeep_Click" ToolTip="Remover">
+                                                    <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <Button DockPanel.Dock="Right" Content="Novo vigia" Click="AddWatchdog_Click"/>
+                                <TextBlock Text="Vigia" Style="{StaticResource H2}"/>
+                            </DockPanel>
+                            <TextBlock Text="Quando um programa passar do limite de CPU ou de RAM por um tempo, o Prumo age. Depois de agir, espera pelo menos 1 minuto antes de agir de novo no mesmo processo." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <TextBlock x:Name="WatchdogEmpty" Text="Nenhum vigia ainda." Style="{StaticResource Muted}" Margin="0,4"/>
+                            <ItemsControl x:Name="WatchdogList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type ui:WatchdogRow}">
+                                        <Border Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="2*"/>
+                                                    <ColumnDefinition Width="1.2*"/>
+                                                    <ColumnDefinition Width="0.8*"/>
+                                                    <ColumnDefinition Width="0.8*"/>
+                                                    <ColumnDefinition Width="1.6*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Enabled}" VerticalAlignment="Bottom" Margin="0,0,10,6" ToolTip="Ligado"/>
+                                                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                    <TextBlock Text="Programa" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <TextBox Text="{Binding Exe, UpdateSourceTrigger=LostFocus}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                                    <TextBlock Text="Medida" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <ComboBox ItemsSource="{Binding MetricOptions}" SelectedItem="{Binding Metric}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="3" Margin="0,0,8,0">
+                                                    <TextBlock Text="Acima de" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <TextBox Text="{Binding Threshold, UpdateSourceTrigger=LostFocus}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="4" Margin="0,0,8,0">
+                                                    <TextBlock Text="Por (seg.)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <TextBox Text="{Binding Seconds, UpdateSourceTrigger=LostFocus}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="5" Margin="0,0,8,0">
+                                                    <TextBlock Text="Então" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                                    <ComboBox ItemsSource="{Binding ActionOptions}" SelectedItem="{Binding WhatToDo}"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="6" Style="{StaticResource GhostButton}" VerticalAlignment="Bottom" Click="RemoveWatchdog_Click" Tag="{Binding}" ToolTip="Remover vigia">
+                                                    <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedBrush}" FontSize="14"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="IdleOn" Style="{StaticResource Switch}" Click="IdleChanged" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="IdleSaver" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Com o PC parado (sem teclado e mouse), troca para um plano de energia econômico; volta assim que você mexer. Não age enquanto o modo desempenho ou um modo jogo estiver ativo." Style="{StaticResource Muted}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <StackPanel Orientation="Horizontal">
+                                <StackPanel Margin="0,0,14,0">
+                                    <TextBlock Text="Ocioso depois de (min)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="IdleMinutes" Width="140" LostFocus="IdleChanged"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Plano enquanto ocioso" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox x:Name="IdlePlan" Width="320" SelectionChanged="IdlePlan_Changed"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
             <!-- ===== Log ===== -->
             <Grid x:Name="PageLog" Grid.Row="1" Margin="28,0,28,24" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <DockPanel Margin="0,0,0,16">
-                    <StackPanel>
+                <StackPanel Margin="0,0,0,16">
+                    <StackPanel Margin="0,0,0,12">
                         <TextBlock Text="Registro" Style="{StaticResource H1}"/>
                         <TextBlock x:Name="LogCount" Text="—" Style="{StaticResource Muted}" FontSize="13" Margin="0,4,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                        <ComboBox x:Name="LogFilter" Width="200" SelectionChanged="LogFilter_SelectionChanged"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Grid Width="200" Margin="0,0,8,0">
+                            <TextBox x:Name="LogSearch" Padding="32,0,8,0" TextChanged="LogFilter_SelectionChanged"/>
+                            <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Foreground="{DynamicResource MutedBrush}" Margin="11,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"/>
+                            <TextBlock Text="Buscar" Style="{StaticResource Muted}" FontSize="13" Margin="33,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Visibility="{Binding Text, ElementName=LogSearch, Converter={StaticResource EmptyToVisible}}"/>
+                        </Grid>
+                        <ComboBox x:Name="LogFilter" Width="170" SelectionChanged="LogFilter_SelectionChanged"/>
+                        <Button Margin="8,0,0,0" Content="Exportar" Click="ExportLog_Click" ToolTip="Salva os eventos mostrados num arquivo .txt"/>
+                        <Button Margin="8,0,0,0" Content="Copiar diagnóstico" Click="CopyDiagnostics_Click" ToolTip="Copia versão, Windows, configuração e os últimos eventos, para colar num relato de problema"/>
                         <Button Margin="8,0,0,0" Content="Abrir pasta" Click="OpenLogFolder_Click"/>
                         <Button Margin="8,0,0,0" Content="Limpar" Click="ClearLog_Click"/>
                     </StackPanel>
-                </DockPanel>
+                </StackPanel>
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
                     <ListBox x:Name="LogList">
                         <ListBox.ItemTemplate>
@@ -593,6 +751,18 @@
                             <TextBlock x:Name="SetPlanNow" Style="{StaticResource Muted}" Margin="0,0,0,12"/>
                             <TextBlock Text="Ao sair do modo jogo, voltar para" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                             <ComboBox x:Name="SetDefaultPlan" Width="320" HorizontalAlignment="Left" SelectionChanged="DefaultPlan_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="Backup da configuração" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Salve as regras e os ajustes num arquivo para guardar, levar para outro PC ou anexar num relato de problema." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Exportar..." Click="ExportConfig_Click"/>
+                                <Button Margin="8,0,0,0" Content="Importar..." Click="ImportConfig_Click"/>
+                                <Button Margin="8,0,0,0" Content="Restaurar padrões" Click="ResetConfig_Click"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

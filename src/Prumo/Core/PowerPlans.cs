@@ -8,6 +8,12 @@ public static unsafe class PowerPlans
 {
     const uint ACCESS_SCHEME = 16;
 
+    // Built-in plans, matched by GUID: the friendly names are localized, so never match on them.
+    static readonly Guid Balanced = new("381b4222-f694-41f0-9685-ff5bb260df2e");
+    static readonly Guid PowerSaver = new("a1841308-3541-4fab-bc81-f71556f20b4a");
+    static readonly Guid Ultimate = new("e9a42b02-d5df-448d-aa00-03f14749eb61");
+    static readonly Guid HighPerformance = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
+
     public static List<PowerPlan> List()
     {
         var plans = new List<PowerPlan>();
@@ -45,6 +51,22 @@ public static unsafe class PowerPlans
     {
         var a = Active();
         return a is null ? null : List().FirstOrDefault(p => p.Id == a)?.Name;
+    }
+
+    /// <summary>
+    /// A performance plan name for settings that need one: the active plan when it is neither
+    /// Balanced nor Power saver (so a tuned plan such as "Prumo Alto Desempenho" wins), otherwise
+    /// Ultimate Performance, otherwise High performance; null when none of them exists.
+    /// </summary>
+    public static string? DefaultPerformancePlanName()
+    {
+        var plans = List();
+        string? NameOf(Guid id) => plans.FirstOrDefault(p => p.Id == id)?.Name;
+
+        if (Active() is { } active && active != Balanced && active != PowerSaver)
+            return NameOf(active);
+
+        return NameOf(Ultimate) ?? NameOf(HighPerformance);
     }
 
     public static Guid? Find(string name) =>

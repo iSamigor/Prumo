@@ -4,7 +4,7 @@ namespace Prumo.Core;
 
 public sealed record ProcessInfo(
     int Pid, int ParentPid, string Exe, uint SessionId, double Cpu, ulong WorkingSet,
-    int BasePriority, bool Restrained, bool HasRule, bool Foreground, string? Path);
+    int BasePriority, bool Restrained, bool HasRule, bool Foreground, string? Path, long CreateTime);
 
 public sealed record EngineSnapshot(
     DateTime Time, IReadOnlyList<ProcessInfo> Processes, double CpuTotal, SystemSample? System,
@@ -12,8 +12,8 @@ public sealed record EngineSnapshot(
 
 /// <summary>
 /// Once a second: reads every process, applies the rules to new processes, runs ProBalance, the
-/// foreground boost, the CPU limiter and SmartTrim, and switches the power plan for "modo jogo" /
-/// "modo desempenho".
+/// foreground boost, the CPU limiter, the watchdog, disallowed/keep-running lists and SmartTrim, and
+/// switches the power plan for "modo jogo" / "modo desempenho" / IdleSaver.
 /// </summary>
 public sealed unsafe class Engine : IDisposable
 {
@@ -41,6 +41,11 @@ public sealed unsafe class Engine : IDisposable
         public string? Path; public bool PathResolved;
         public bool Boosted; public uint BoostOriginal, BoostClass;   // foreground boost
         public long LimitedAt; public ulong LimitOriginal, LimitMask;  // CPU limiter
+        public long RuleFailedAt; public int RuleRounds;               // rule retries for late-opening processes
+        public uint SessionId;
+        public bool KeepAlive, KilledByUs, DisallowedSeen;
+        public string? CommandLine, WorkDir;
+        public Dictionary<WatchdogRule, long>? WatchOver, WatchFired;
     }
 
     readonly ActivityLog _log;
@@ -59,14 +64,27 @@ public sealed unsafe class Engine : IDisposable
     uint[]? _cpuSetIds;
     uint _timerSet;
     long _lastTrim = -1, _lastPurge = -10 * 60_000;
+    readonly Queue<(int Pid, long Create, ulong Ws, string Exe)> _trimQueue = new();
+    int _trimCount; ulong _trimBytes;
+    bool _awake;                 // SetThreadExecutionState held for a "prevent sleep" rule
+    bool _disposed;
+    // "Manter rodando": programs waiting to be started again, and how often each was restarted lately.
+    readonly List<(string Cmd, string? Dir, string Exe, long Due)> _restarts = new();
+    readonly Dictionary<string, (int Count, long Since)> _restartHistory = new(StringComparer.OrdinalIgnoreCase);
+    static string StateFile => Path.Combine(AppConfig.Dir, "plan-before.txt");
 
     // The UI edits Config on its own thread; the engine only reads this immutable copy, swapped on ConfigChanged.
-    sealed record View(AppConfig Cfg, Dictionary<string, Guid?> PlanIds, RuleMatcher Matcher)
+    sealed record View(AppConfig Cfg, Dictionary<string, Guid?> PlanIds, RuleMatcher Matcher,
+        RuleMatcher Disallowed, RuleMatcher KeepRunning, List<(WatchdogRule Rule, RuleMatcher Match)> Watchdog)
     {
+        public bool NeedsPaths => Matcher.NeedsPaths || Disallowed.NeedsPaths || KeepRunning.NeedsPaths || Watchdog.Any(w => w.Match.NeedsPaths);
+
         public static View Of(AppConfig cfg)
         {
             var c = cfg.Clone();
-            return new(c, new(StringComparer.OrdinalIgnoreCase), new RuleMatcher(c.Rules));
+            static RuleMatcher Names(IEnumerable<string> names) => new(names.Select(n => new ProcessRule { Exe = n }));
+            return new(c, new(StringComparer.OrdinalIgnoreCase), new RuleMatcher(c.Rules), Names(c.Disallowed), Names(c.KeepRunning),
+                c.Watchdog.Where(w => w.Enabled).Select(w => (w, Names(new[] { w.Exe }))).ToList());
         }
     }
     volatile View _view;
@@ -89,6 +107,16 @@ public sealed unsafe class Engine : IDisposable
     {
         _log.Add(EventKind.Info, 0, "prumo.exe", $"Gerenciamento iniciado ({Config.Rules.Count} regras, ProBalance {(Config.ProBalance.Enabled ? "ligado" : "desligado")})");
         ApplyTimerResolution();
+        // A crash or a kill from Task Manager left a game plan on: go back to the plan from before on the first tick.
+        try
+        {
+            if (File.Exists(StateFile) && Guid.TryParse(File.ReadAllText(StateFile).Trim(), out var before))
+            {
+                _planBefore = before;
+                if (PowerPlans.Active() is { } active && active != before) _planSet = active;
+            }
+        }
+        catch { }
         _thread = new Thread(Loop) { IsBackground = true, Name = "Prumo engine", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
     }
@@ -100,6 +128,13 @@ public sealed unsafe class Engine : IDisposable
         _view = View.Of(Config);
         ApplyTimerResolution();
         Config.Save();
+    }
+
+    /// <summary>Swaps in a whole new configuration (import, reset to defaults).</summary>
+    public void ReplaceConfig(AppConfig cfg)
+    {
+        Config = cfg;
+        ConfigChanged();
     }
 
     void ApplyTimerResolution()
@@ -119,9 +154,10 @@ public sealed unsafe class Engine : IDisposable
             var started = _clock.ElapsedMilliseconds;
             try { Tick(); }
             catch (Exception ex) { _log.Add(EventKind.Info, 0, "prumo.exe", "Erro no ciclo: " + ex.Message); }
-            var wait = Live.UpdateIntervalMs - (int)(_clock.ElapsedMilliseconds - started);
+            var wait = Math.Clamp(Live.UpdateIntervalMs, 250, 10_000) - (int)(_clock.ElapsedMilliseconds - started);
             if (wait > 0) Thread.Sleep(wait);
         }
+        if (_awake) Native.SetThreadExecutionState(Native.ES_CONTINUOUS);   // execution state belongs to this thread
     }
 
     // ------------------------------------------------------------------ tick
@@ -144,6 +180,7 @@ public sealed unsafe class Engine : IDisposable
         var cfg = view.Cfg;
         var pb = cfg.ProBalance;
         var planRules = new List<ProcessRule>();
+        bool keepAwake = false;
 
         SystemSample? sys = null;
         try { sys = _sampler?.Sample(); } catch { }
@@ -154,7 +191,7 @@ public sealed unsafe class Engine : IDisposable
             {
                 seen.Add(p.Pid);
                 if (!_tracked.TryGetValue(p.Pid, out var t) || t.CreateTime != p.CreateTime)
-                    _tracked[p.Pid] = t = new Tracked { CreateTime = p.CreateTime, Exe = p.Name };
+                    _tracked[p.Pid] = t = new Tracked { CreateTime = p.CreateTime, Exe = p.Name, SessionId = p.SessionId };
 
                 if (t.LastCpuTime >= 0 && wallMs > 0)
                     t.Cpu = Math.Clamp((p.CpuTime - t.LastCpuTime) / 10_000.0 / (wallMs * _cpuCount) * 100, 0, 100);
@@ -162,15 +199,25 @@ public sealed unsafe class Engine : IDisposable
                 if (p.Pid != 0) totalCpu += t.Cpu;
 
                 // Paths cost an OpenProcess, so they are only read (once per process) when a rule matches on paths.
-                if (view.Matcher.NeedsPaths && !t.PathResolved && p.Pid > 4)
+                if (view.NeedsPaths && !t.PathResolved && p.Pid > 4)
                 {
                     t.Path = PathOf(p.Pid);
                     t.PathResolved = true;
                 }
+                bool ours = p.Pid > 4 && p.Pid != _selfPid && !Untouchable.Contains(p.Name);
+                if (ours && !t.KilledByUs && view.Disallowed.Match(p.Name, t.Path) is not null && Disallow(p, t, cfg.DisallowedLogOnly)) continue;
+
                 var rule = view.Matcher.Match(p.Name, t.Path);
+                // A process that refused access (anti-cheat starting up, for example) gets another round every 30 s.
+                if (rule is not null && t.RuleVersion != _ruleVersion && t.RuleAttempts >= 5 && t.RuleRounds < 10 && now - t.RuleFailedAt >= 30_000)
+                    t.RuleAttempts = 0;
                 if (rule is not null && t.RuleVersion != _ruleVersion && t.RuleAttempts < 5 && p.Pid > 4)
                     ApplyRule(p.Pid, t, rule);
                 if (rule?.PowerPlan is not null) planRules.Add(rule);
+                if (rule?.PreventSleep == true) keepAwake = true;
+
+                if (ours && !t.KeepAlive && p.SessionId != 0 && view.KeepRunning.Match(p.Name, t.Path) is not null) RememberForRestart(p.Pid, t);
+                if (ours && view.Watchdog.Count > 0) Watchdog(p, t, view, now);
 
                 bool fg = p.Pid == fgPid;
                 if (p.Pid > 4 && p.Pid != _selfPid)
@@ -184,13 +231,15 @@ public sealed unsafe class Engine : IDisposable
                 if (t.RestrainedAt != 0) restrained++;
 
                 list.Add(new ProcessInfo(p.Pid, p.ParentPid, p.Name, p.SessionId, t.Cpu, p.WorkingSet,
-                    p.BasePriority, t.RestrainedAt != 0, rule is not null, fg, t.Path));
+                    p.BasePriority, t.RestrainedAt != 0, rule is not null, fg, t.Path, p.CreateTime));
             }
 
             foreach (var pid in _tracked.Keys.Where(k => !seen.Contains(k)).ToList())
             {
                 var t = _tracked[pid];
                 if (t.RestrainedAt != 0) _log.Add(EventKind.Restored, pid, t.Exe, "ProBalance terminou: o processo fechou");
+                if (t.KeepAlive && !t.KilledByUs && t.CommandLine is not null && view.KeepRunning.Match(t.Exe, t.Path) is not null)
+                    QueueRestart(t, now);
                 _tracked.Remove(pid);
             }
         }
@@ -199,7 +248,14 @@ public sealed unsafe class Engine : IDisposable
         _lastTotal = Math.Min(100, totalCpu);
 
         SmartTrim(procs, fgPid, parents, sys, now, view);
+        RunRestarts(now);
         UpdatePowerPlan(planRules);
+        if (keepAwake != _awake)
+        {
+            Native.SetThreadExecutionState(keepAwake ? Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED : Native.ES_CONTINUOUS);
+            _awake = keepAwake;
+            _log.Add(EventKind.Info, 0, "prumo.exe", keepAwake ? "Suspensão bloqueada: um programa com \"impedir suspensão\" está rodando" : "Suspensão liberada de novo");
+        }
 
         if (now - _planNameAt > 5000) { _planName = PowerPlans.ActiveName(); _planNameAt = now; }
         var snap = new EngineSnapshot(DateTime.Now, list, sys?.CpuTotal ?? _lastTotal, sys, restrained, started, _planName);
@@ -259,6 +315,8 @@ public sealed unsafe class Engine : IDisposable
             var cls = Native.GetPriorityClass(h);
             if (cls == 0 || (pb.OnlyNormalPriority && cls != NORMAL)) return 0;
             var target = pb.LowerToIdle ? IDLE : BELOW_NORMAL;
+            // Never raise: an Idle/Below normal process is already as low as ProBalance would put it.
+            if (Rank(cls) <= Rank(target)) { t.OverSince = 0; return 0; }
             if (!Native.SetPriorityClass(h, target)) return 0;
             t.OriginalIo = -1;
             // A rule that sets the I/O priority wins over ProBalance.
@@ -288,7 +346,16 @@ public sealed unsafe class Engine : IDisposable
         }
         // Only undo our own change: if something else changed the priority since, leave it.
         if (Native.GetPriorityClass(h) == t.RestrainedClass) Native.SetPriorityClass(h, t.OriginalClass);
-        if (t.OriginalIo >= 0) { int io = t.OriginalIo; Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref io, 4); t.OriginalIo = -1; }
+        if (t.OriginalIo >= 0)
+        {
+            // Same for I/O: a rule or the user may have set it since.
+            if (Native.NtQueryInformationProcess(h, Native.ProcessIoPriority, out int curIo, 4, out _) >= 0 && curIo == (int)IoPriority.Low)
+            {
+                int io = t.OriginalIo;
+                Native.NtSetInformationProcess(h, Native.ProcessIoPriority, ref io, 4);
+            }
+            t.OriginalIo = -1;
+        }
         Native.CloseHandle(h);
         t.RestrainedAt = 0;
         _log.Add(EventKind.Restored, pid, t.Exe, "Prioridade original restaurada: " + why);
@@ -302,7 +369,12 @@ public sealed unsafe class Engine : IDisposable
         var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
         if (h == 0)
         {
-            if (t.RuleAttempts == 5) _log.Add(EventKind.RuleFailed, pid, t.Exe, "Sem acesso ao processo para aplicar a regra");
+            if (t.RuleAttempts == 5)
+            {
+                t.RuleFailedAt = _clock.ElapsedMilliseconds;
+                if (++t.RuleRounds == 1) _log.Add(EventKind.RuleFailed, pid, t.Exe, "Sem acesso ao processo para aplicar a regra (tento de novo a cada 30 s)");
+                if (t.RuleRounds >= 10) t.RuleVersion = _ruleVersion;
+            }
             return;
         }
         var done = new List<string>();
@@ -354,11 +426,13 @@ public sealed unsafe class Engine : IDisposable
         }
         finally { Native.CloseHandle(h); }
 
-        if (failed.Count == 0 || t.RuleAttempts == 5) t.RuleVersion = _ruleVersion;
-        if (done.Count > 0 && (failed.Count == 0 || t.RuleAttempts == 5))
+        bool lastTry = t.RuleAttempts == 5;
+        if (lastTry && failed.Count > 0) { t.RuleFailedAt = _clock.ElapsedMilliseconds; t.RuleRounds++; }
+        if (failed.Count == 0 || (lastTry && t.RuleRounds >= 10)) t.RuleVersion = _ruleVersion;
+        if (done.Count > 0 && (failed.Count == 0 || (lastTry && t.RuleRounds == 1)))
             _log.Add(EventKind.RuleApplied, pid, t.Exe, "Regra aplicada: " + string.Join(", ", done));
-        if (failed.Count > 0 && t.RuleAttempts == 5)
-            _log.Add(EventKind.RuleFailed, pid, t.Exe, "Falhou: " + string.Join(", ", failed));
+        if (failed.Count > 0 && lastTry && t.RuleRounds == 1)
+            _log.Add(EventKind.RuleFailed, pid, t.Exe, "Falhou: " + string.Join(", ", failed) + " (tento de novo a cada 30 s)");
     }
 
     /// <summary>Same setting as Windows' Settings &gt; Display &gt; Graphics; DirectX reads it when the program starts.</summary>
@@ -378,6 +452,12 @@ public sealed unsafe class Engine : IDisposable
         }
         catch { return false; }
     }
+
+    /// <summary>Priority classes in order (their numeric values are not).</summary>
+    static int Rank(uint cls) => cls switch
+    {
+        IDLE => 0, BELOW_NORMAL => 1, NORMAL => 2, 0x8000 => 3, 0x80 => 4, 0x100 => 5, _ => 2,
+    };
 
     static uint ToClass(CpuPriority p) => p switch
     {
@@ -414,7 +494,8 @@ public sealed unsafe class Engine : IDisposable
         {
             var cls = Native.GetPriorityClass(hh);
             var target = ToClass(fb.Priority);
-            if (cls == 0 || cls == target || (fb.OnlyNormal && cls != NORMAL)) return;
+            // Boost only raises: a High/Realtime foreground process stays where it is.
+            if (cls == 0 || Rank(cls) >= Rank(target) || (fb.OnlyNormal && cls != NORMAL)) return;
             if (Native.SetPriorityClass(hh, target)) { t.Boosted = true; t.BoostOriginal = cls; t.BoostClass = target; }
         }
         finally { Native.CloseHandle(hh); }
@@ -457,6 +538,153 @@ public sealed unsafe class Engine : IDisposable
         finally { Native.CloseHandle(hh); }
     }
 
+    // ---------------------------------------------------- disallowed processes
+
+    /// <returns>True when the process was closed (nothing else to do with it this tick).</returns>
+    bool Disallow(RawProcess p, Tracked t, bool logOnly)
+    {
+        if (p.SessionId == 0) return false;   // services and system processes: never
+        if (logOnly)
+        {
+            if (!t.DisallowedSeen) _log.Add(EventKind.Restrained, p.Pid, p.Name, "Processo proibido rodando (só registrando)");
+            t.DisallowedSeen = true;
+            return false;
+        }
+        if (!KillVerified(p.Pid, p.CreateTime))
+        {
+            if (!t.DisallowedSeen) _log.Add(EventKind.RuleFailed, p.Pid, p.Name, "Processo proibido: não consegui fechar");
+            t.DisallowedSeen = true;
+            return false;
+        }
+        t.KilledByUs = true;
+        _log.Add(EventKind.Restrained, p.Pid, p.Name, "Processo proibido fechado");
+        return true;
+    }
+
+    // ------------------------------------------------------------ keep running
+
+    /// <summary>Reads what is needed to start the process again (once, while it still runs).</summary>
+    void RememberForRestart(int pid, Tracked t)
+    {
+        t.KeepAlive = true;
+        var h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == 0) return;
+        try
+        {
+            t.CommandLine = Native.CommandLine(h);
+            t.Path ??= Native.ImagePath(h);
+            t.WorkDir = t.Path is null ? null : Path.GetDirectoryName(t.Path);
+        }
+        finally { Native.CloseHandle(h); }
+    }
+
+    void QueueRestart(Tracked t, long now)
+    {
+        var cmd = t.CommandLine!;
+        if (_restarts.Any(r => r.Cmd == cmd)) return;
+        // Backoff (2 s, 4 s, 8 s...) and a limit, so a program that crashes on start is not reopened forever.
+        var (count, since) = _restartHistory.GetValueOrDefault(cmd, (0, now));
+        if (now - since > 600_000) (count, since) = (0, now);
+        _restartHistory[cmd] = (count + 1, since);
+        if (count >= 5)
+        {
+            if (count == 5) _log.Add(EventKind.RuleFailed, 0, t.Exe, "Manter rodando: fechou 5 vezes em 10 minutos, parei de reabrir");
+            return;
+        }
+        _restarts.Add((cmd, t.WorkDir, t.Exe, now + (2000L << count)));
+    }
+
+    void RunRestarts(long now)
+    {
+        for (int i = _restarts.Count - 1; i >= 0; i--)
+        {
+            var r = _restarts[i];
+            if (now < r.Due) continue;
+            _restarts.RemoveAt(i);
+            bool running;
+            lock (_tracked) running = _tracked.Values.Any(x => !x.KilledByUs && string.Equals(x.Exe, r.Exe, StringComparison.OrdinalIgnoreCase));
+            if (running) continue;   // the user (or the program's own updater) already opened it
+            var err = Launcher.StartAsUser(r.Cmd, r.Dir);
+            _log.Add(err is null ? EventKind.RuleApplied : EventKind.RuleFailed, 0, r.Exe,
+                err is null ? "Aberto de novo (manter rodando / vigia)" : "Não consegui abrir de novo: " + err);
+        }
+    }
+
+    // --------------------------------------------------------------- watchdog
+
+    void Watchdog(RawProcess p, Tracked t, View view, long now)
+    {
+        foreach (var (w, match) in view.Watchdog)
+        {
+            if (match.Match(p.Name, t.Path) is null) continue;
+            double value = w.Metric == WatchMetric.Cpu ? t.Cpu : p.WorkingSet / 1048576.0;
+            t.WatchOver ??= new(); t.WatchFired ??= new();
+            // Hysteresis: it must drop 10% under the threshold to count as back to normal.
+            if (value < w.Threshold * 0.9) { t.WatchOver.Remove(w); continue; }
+            if (value < w.Threshold) continue;
+            if (!t.WatchOver.TryGetValue(w, out var since)) { t.WatchOver[w] = now; continue; }
+            if (now - since < w.ForSeconds * 1000L) continue;
+            // After firing, wait at least a minute (or the rule's own time) before firing again for this process.
+            if (t.WatchFired.TryGetValue(w, out var fired) && now - fired < Math.Max(60_000L, w.ForSeconds * 1000L)) continue;
+            t.WatchFired[w] = now;
+            t.WatchOver.Remove(w);
+            Fire(p, t, w, value, now);
+        }
+    }
+
+    void Fire(RawProcess p, Tracked t, WatchdogRule w, double value, long now)
+    {
+        var what = w.Metric == WatchMetric.Cpu ? $"CPU {value:0}% por {w.ForSeconds} s" : $"{value:0} MB de RAM por {w.ForSeconds} s";
+        string result;
+        switch (w.Action)
+        {
+            case WatchAction.LowerPriority:
+                result = LowerNow(p.Pid, p.CreateTime, t) ? "prioridade reduzida para Abaixo do normal" : "não consegui reduzir a prioridade";
+                break;
+            case WatchAction.TrimMemory:
+                result = MemoryTools.TrimWorkingSet(p.Pid) ? "memória liberada" : "não consegui liberar a memória";
+                break;
+            case WatchAction.Kill when p.SessionId == 0:
+            case WatchAction.Restart when p.SessionId == 0:
+                result = "é um processo do sistema, deixei como está";
+                break;
+            case WatchAction.Kill:
+                t.KilledByUs = KillVerified(p.Pid, p.CreateTime);
+                result = t.KilledByUs ? "processo fechado" : "não consegui fechar";
+                break;
+            case WatchAction.Restart:
+                if (t.CommandLine is null) RememberForRestart(p.Pid, t);
+                if (t.CommandLine is null) { result = "não consegui ler a linha de comando"; break; }
+                if (!KillVerified(p.Pid, p.CreateTime)) { result = "não consegui fechar"; break; }
+                t.KilledByUs = true;
+                _restarts.Add((t.CommandLine, t.WorkDir, t.Exe, now + 1500));
+                result = "processo fechado, abrindo de novo";
+                break;
+            default:
+                result = "só registrado";
+                break;
+        }
+        _log.Add(EventKind.Restrained, p.Pid, p.Name, $"Vigia: {what} → {result}");
+    }
+
+    bool LowerNow(int pid, long createTime, Tracked t)
+    {
+        var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == 0) return false;
+        try
+        {
+            if (!Native.IsSameProcess(h, createTime)) return false;
+            var cls = Native.GetPriorityClass(h);
+            if (cls != 0 && Rank(cls) <= Rank(BELOW_NORMAL)) return true;
+            if (!Native.SetPriorityClass(h, BELOW_NORMAL)) return false;
+            // ProBalance or the foreground boost must not undo this when they restore.
+            if (t.RestrainedAt != 0) t.OriginalClass = BELOW_NORMAL;
+            t.Boosted = false;
+            return true;
+        }
+        finally { Native.CloseHandle(h); }
+    }
+
     // --------------------------------------------------------------- SmartTrim
 
     void SmartTrim(List<RawProcess> procs, int fgPid, Dictionary<int, (int Parent, long Create)> parents,
@@ -469,7 +697,7 @@ public sealed unsafe class Engine : IDisposable
             now - _lastTrim >= Math.Max(1, st.IntervalMinutes) * 60_000L)
         {
             _lastTrim = now;
-            int count = 0; ulong trimmed = 0;
+            _trimQueue.Clear(); _trimCount = 0; _trimBytes = 0;
             ulong min = (ulong)Math.Max(1, st.MinProcessMb) << 20;
             foreach (var p in procs)
             {
@@ -480,10 +708,17 @@ public sealed unsafe class Engine : IDisposable
                 string? path;
                 lock (_tracked) path = _tracked.TryGetValue(p.Pid, out var t) ? t.Path : null;
                 if (view.Matcher.Match(p.Name, path) is { CpuPriority: not null }) continue;
-                if (MemoryTools.TrimWorkingSet(p.Pid)) { count++; trimmed += p.WorkingSet; }
+                _trimQueue.Enqueue((p.Pid, p.CreateTime, p.WorkingSet, p.Name));
             }
-            if (count > 0)
-                _log.Add(EventKind.Memory, 0, "prumo.exe", $"SmartTrim: memória de {count} processos em segundo plano liberada (~{trimmed >> 20} MB)");
+        }
+
+        // A few processes per tick: trimming dozens at once stalls the loop (and the disk).
+        if (_trimQueue.Count > 0)
+        {
+            for (int i = 0; i < 6 && _trimQueue.TryDequeue(out var q); i++)
+                if (MemoryTools.TrimWorkingSet(q.Pid, q.Create)) { _trimCount++; _trimBytes += q.Ws; }
+            if (_trimQueue.Count == 0 && _trimCount > 0)
+                _log.Add(EventKind.Memory, 0, "prumo.exe", $"SmartTrim: memória de {_trimCount} processos em segundo plano liberada (~{_trimBytes >> 20} MB)");
         }
 
         if (st.PurgeStandbyList && now - _lastPurge >= 5 * 60_000)
@@ -520,21 +755,34 @@ public sealed unsafe class Engine : IDisposable
             foreach (var r in running)
                 if (Resolve(r.PowerPlan!) is { } id) { want = id; who = r.Exe; break; }
 
+        // IdleSaver only when nothing else asked for a plan: a game or "modo desempenho" always wins.
+        if (want is null && view.Cfg.IdleSaver is { Enabled: true, IdlePlan: { } idlePlan } idle &&
+            Native.IdleMilliseconds() >= (uint)idle.IdleMinutes * 60_000u && Resolve(idlePlan) is { } idleId)
+        {
+            want = idleId; who = "IdleSaver";
+        }
+
         if (want is not null && _planSet != want)
         {
             var active = PowerPlans.Active();
-            _planBefore ??= active;
+            if (_planBefore is null && active is not null)
+            {
+                _planBefore = active;
+                try { File.WriteAllText(StateFile, active.Value.ToString()); } catch { }
+            }
             if (active != want && PowerPlans.SetActive(want.Value))
-                _log.Add(EventKind.PowerPlan, 0, who!,
-                    (who == "modo desempenho" ? "Modo desempenho" : "Modo jogo") + ": plano de energia " + PlanName(want.Value));
+                _log.Add(EventKind.PowerPlan, 0, who == "IdleSaver" ? "prumo.exe" : who!,
+                    who switch { "modo desempenho" => "Modo desempenho", "IdleSaver" => "IdleSaver (computador ocioso)", _ => "Modo jogo" }
+                    + ": plano de energia " + PlanName(want.Value));
             _planSet = want;
         }
         else if (want is null && _planSet is not null)
         {
             var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null && PowerPlans.Active() != back && PowerPlans.SetActive(back.Value))
-                _log.Add(EventKind.PowerPlan, 0, "prumo.exe", "Modo jogo/desempenho terminou: plano de energia " + PlanName(back.Value));
+                _log.Add(EventKind.PowerPlan, 0, "prumo.exe", "De volta ao plano de energia normal: " + PlanName(back.Value));
             _planSet = null; _planBefore = null;
+            try { File.Delete(StateFile); } catch { }
         }
     }
 
@@ -584,18 +832,19 @@ public sealed unsafe class Engine : IDisposable
     // ---------------------------------------------------------- manual actions
 
     /// <summary>One-off change from the process list (not saved as a rule).</summary>
-    public bool SetPriorityNow(int pid, CpuPriority p)
-    {
-        var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION, false, pid);
-        if (h == 0) return false;
-        try { return Native.SetPriorityClass(h, ToClass(p)); } finally { Native.CloseHandle(h); }
-    }
-
-    public bool SetAffinityNow(int pid, ulong mask)
+    /// <remarks>Manual actions take the creation time from the snapshot: the menu can stay open long enough for the PID to be reused.</remarks>
+    public bool SetPriorityNow(int pid, long createTime, CpuPriority p)
     {
         var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
         if (h == 0) return false;
-        try { return Native.SetProcessAffinityMask(h, (nuint)mask); } finally { Native.CloseHandle(h); }
+        try { return Native.IsSameProcess(h, createTime) && Native.SetPriorityClass(h, ToClass(p)); } finally { Native.CloseHandle(h); }
+    }
+
+    public bool SetAffinityNow(int pid, long createTime, ulong mask)
+    {
+        var h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == 0) return false;
+        try { return Native.IsSameProcess(h, createTime) && Native.SetProcessAffinityMask(h, (nuint)mask); } finally { Native.CloseHandle(h); }
     }
 
     public static ulong? GetAffinity(int pid)
@@ -605,9 +854,12 @@ public sealed unsafe class Engine : IDisposable
         try { return Native.GetProcessAffinityMask(h, out var pm, out _) ? pm : null; } finally { Native.CloseHandle(h); }
     }
 
-    public static bool Kill(int pid)
+    /// <summary>Terminates the process only if it is still the one created at createTime.</summary>
+    public static bool KillVerified(int pid, long createTime)
     {
-        try { Process.GetProcessById(pid).Kill(); return true; } catch { return false; }
+        var h = Native.OpenProcess(Native.PROCESS_TERMINATE | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == 0) return false;
+        try { return Native.IsSameProcess(h, createTime) && Native.TerminateProcess(h, 1); } finally { Native.CloseHandle(h); }
     }
 
     public static string? PathOf(int pid)
@@ -619,6 +871,8 @@ public sealed unsafe class Engine : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;   // OnExit and SessionEnding can both call it
+        _disposed = true;
         _stop = true;
         _thread?.Join(3000);
         lock (_tracked)
@@ -638,6 +892,7 @@ public sealed unsafe class Engine : IDisposable
             var back = (Live.DefaultPowerPlan is { } n ? PowerPlans.Find(n) : null) ?? _planBefore;
             if (back is not null) PowerPlans.SetActive(back.Value);
         }
+        try { File.Delete(StateFile); } catch { }
         if (_timerSet != 0) Native.NtSetTimerResolution(_timerSet, false, out _);
         _sampler?.Dispose();
     }

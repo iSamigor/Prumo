@@ -55,8 +55,7 @@ public sealed class Tray : IDisposable
     {
         var c = _engine.Config;
         c.PerformanceMode = !c.PerformanceMode;
-        c.PerformancePlan ??= PowerPlans.List().FirstOrDefault(p => p.Name.Contains("Highest", StringComparison.OrdinalIgnoreCase)
-            || p.Name.Contains("Ultimate", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("High performance", StringComparison.OrdinalIgnoreCase))?.Name;
+        c.PerformancePlan ??= PowerPlans.DefaultPerformancePlanName();
         _engine.ConfigChanged();
     }
 

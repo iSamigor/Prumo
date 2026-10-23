@@ -41,6 +41,7 @@ public partial class App : Application
             ex.Handled = true;
         };
 
+        SecureStore.HardenDirectory(AppConfig.Dir);   // config.json drives an elevated process: only admins may write here
         var log = new ActivityLog();
         var config = AppConfig.Load();
         if (config.ImportedFromProcessLasso && !File.Exists(Path.Combine(AppConfig.Dir, ".welcomed")))
@@ -60,6 +61,8 @@ public partial class App : Application
         _tray = new Tray(_engine, ShowWindow, ExitApp);
         _engine.Updated += s => Dispatcher.BeginInvoke(() => _tray?.Update(s));
         _engine.Start();
+        // Logoff/shutdown: put priorities and the power plan back before Windows kills the process.
+        SessionEnding += (_, _) => _engine?.Dispose();
 
         // Used by the installer script: register the logon task from the installed copy.
         if (e.Args.Contains("--enable-autostart", StringComparer.OrdinalIgnoreCase) && Autostart.Enable() is { } err)
@@ -99,8 +102,7 @@ public partial class App : Application
         }
 
         config.PerformanceMode = true;
-        config.PerformancePlan ??= PowerPlans.List().FirstOrDefault(p => p.Name.Contains("Highest", StringComparison.OrdinalIgnoreCase)
-            || p.Name.Contains("Ultimate", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("High performance", StringComparison.OrdinalIgnoreCase))?.Name;
+        config.PerformancePlan ??= PowerPlans.DefaultPerformancePlanName();
         config.ForegroundBoost.Enabled = true;
         config.SmartTrim.TrimWorkingSets = true;
         config.SmartTrim.PurgeStandbyList = true;
