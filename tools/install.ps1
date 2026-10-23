@@ -1,4 +1,4 @@
-# Installs Prumo to C:\Program Files\Prumo, starts it at logon and puts Process Lasso to sleep
+﻿# Installs Prumo to C:\Program Files\Prumo, starts it at logon and puts Process Lasso to sleep
 # (stopped and set to not start; NOT uninstalled, so it can be turned back on with -RestoreLasso).
 # Run elevated:  powershell -ExecutionPolicy Bypass -File tools\install.ps1
 param([switch]$RestoreLasso, [switch]$KeepLasso, [switch]$GameBoost)
