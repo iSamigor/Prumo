@@ -124,6 +124,8 @@ public sealed class AppConfig
     /// <summary>Requested system timer resolution in 100 ns units (5000 = 0.5 ms); 0 = leave Windows alone.</summary>
     public int TimerResolution100ns { get; set; }
     public bool CloseToTray { get; set; } = true;
+    /// <summary>UI theme: Azul, Claro or Preto.</summary>
+    public string Theme { get; set; } = "Azul";
     public bool ImportedFromProcessLasso { get; set; }
 
     /// <summary>%ProgramData%\Prumo, or PRUMO_HOME (used for testing without touching the real config).</summary>

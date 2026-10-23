@@ -105,7 +105,6 @@ public sealed class CoreBar : FrameworkElement
     double _value;
     public double Value { get => _value; set { _value = value; InvalidateVisual(); } }
 
-    static readonly Brush Track = Freeze(new SolidColorBrush(Color.FromRgb(0x17, 0x22, 0x3A)));
     static readonly Brush Low = Freeze(new LinearGradientBrush(Color.FromRgb(0x22, 0xD3, 0xEE), Color.FromRgb(0x2D, 0xD4, 0xBF), 90));
     static readonly Brush High = Freeze(new LinearGradientBrush(Color.FromRgb(0xF5, 0x9E, 0x0B), Color.FromRgb(0xF4, 0x3F, 0x5E), 90));
 
@@ -113,7 +112,7 @@ public sealed class CoreBar : FrameworkElement
     {
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
-        dc.DrawRoundedRectangle(Track, null, new Rect(0, 0, w, h), 4, 4);
+        dc.DrawRoundedRectangle(Themes.Brush("Surface2"), null, new Rect(0, 0, w, h), 4, 4);
         double fh = Math.Clamp(_value, 0, 100) / 100 * h;
         if (fh > 0.5) dc.DrawRoundedRectangle(_value > 85 ? High : Low, null, new Rect(0, h - fh, w, fh), 4, 4);
     }

@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:Prumo.UI"
         Title="Prumo" Width="1180" Height="760" MinWidth="960" MinHeight="600"
-        Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen"
-        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource Text}"
+        Background="{DynamicResource Bg}" WindowStartupLocation="CenterScreen"
+        FontFamily="{StaticResource UiFont}" Foreground="{DynamicResource Text}"
         Icon="pack://application:,,,/Prumo;component/Assets/prumo.ico">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -17,20 +17,20 @@
         </Grid.ColumnDefinitions>
 
         <!-- ============ Sidebar ============ -->
-        <Border Background="#0A1020" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+        <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="16,14,16,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,0,0,26">
                     <Image Source="pack://application:,,,/Prumo;component/Assets/prumo.ico" Width="28" Height="28" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="Prumo" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="SemiBold"/>
-                        <TextBlock Text="equilíbrio de processos" Style="{StaticResource Muted}" FontSize="11"/>
+                        <TextBlock Text="Equilíbrio de Processos" Style="{StaticResource Muted}" FontSize="11"/>
                     </StackPanel>
                 </StackPanel>
 
-                <Border DockPanel.Dock="Bottom" Background="{StaticResource Surface}" CornerRadius="12" Padding="12" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                <Border DockPanel.Dock="Bottom" Background="{DynamicResource Surface}" CornerRadius="12" Padding="12" BorderBrush="{DynamicResource Border}" BorderThickness="1">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{StaticResource Accent}" VerticalAlignment="Center"/>
+                            <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{DynamicResource Accent}" VerticalAlignment="Center"/>
                             <TextBlock x:Name="StatusText" Text="ProBalance ativo" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"/>
                         </StackPanel>
                         <TextBlock x:Name="PlanText" Text="—" Style="{StaticResource Muted}" Margin="16,4,0,0" TextTrimming="CharacterEllipsis"/>
@@ -93,7 +93,7 @@
                     <Border Style="{StaticResource Card}" Margin="6">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <Border Width="8" Height="8" CornerRadius="4" Background="{StaticResource Accent}"/>
+                                <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource Accent}"/>
                                 <TextBlock Text="CPU" Style="{StaticResource Muted}" Margin="8,0,0,0"/>
                             </StackPanel>
                             <TextBlock x:Name="CpuValue" Text="0%" FontFamily="{StaticResource DisplayFont}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/>
@@ -103,7 +103,7 @@
                     <Border Style="{StaticResource Card}" Margin="6">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <Border Width="8" Height="8" CornerRadius="4" Background="{StaticResource Violet}"/>
+                                <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource Violet}"/>
                                 <TextBlock Text="Memória" Style="{StaticResource Muted}" Margin="8,0,0,0"/>
                             </StackPanel>
                             <TextBlock x:Name="MemValue" Text="0%" FontFamily="{StaticResource DisplayFont}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/>
@@ -123,7 +123,7 @@
                     <Border Style="{StaticResource Card}" Margin="6">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <Border Width="8" Height="8" CornerRadius="4" Background="{StaticResource Warn}"/>
+                                <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource Warn}"/>
                                 <TextBlock Text="ProBalance" Style="{StaticResource Muted}" Margin="8,0,0,0"/>
                             </StackPanel>
                             <TextBlock x:Name="PbValue" Text="0" FontFamily="{StaticResource DisplayFont}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/>
@@ -141,13 +141,13 @@
                         <DockPanel Margin="0,0,0,10">
                             <TextBlock Text="Últimos 2 minutos" Style="{StaticResource H2}"/>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Border Width="10" Height="3" CornerRadius="1" Background="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                <Border Width="10" Height="3" CornerRadius="1" Background="{DynamicResource Accent}" VerticalAlignment="Center"/>
                                 <TextBlock Text="CPU" Style="{StaticResource Muted}" Margin="6,0,14,0"/>
-                                <Border Width="10" Height="3" CornerRadius="1" Background="{StaticResource Violet}" VerticalAlignment="Center"/>
+                                <Border Width="10" Height="3" CornerRadius="1" Background="{DynamicResource Violet}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Memória" Style="{StaticResource Muted}" Margin="6,0,14,0"/>
                                 <Border Width="10" Height="3" CornerRadius="1" Background="#60A5FA" VerticalAlignment="Center"/>
                                 <TextBlock Text="GPU" Style="{StaticResource Muted}" Margin="6,0,14,0"/>
-                                <Border Width="3" Height="9" CornerRadius="1" Background="{StaticResource Warn}" VerticalAlignment="Center"/>
+                                <Border Width="3" Height="9" CornerRadius="1" Background="{DynamicResource Warn}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Restrição do ProBalance" Style="{StaticResource Muted}" Margin="6,0,0,0"/>
                             </StackPanel>
                         </DockPanel>
@@ -183,7 +183,7 @@
                     </StackPanel>
                     <Grid HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="280">
                         <TextBox x:Name="ProcFilter" Padding="32,0,8,0" TextChanged="ProcFilter_TextChanged"/>
-                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="11,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"/>
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Foreground="{DynamicResource MutedBrush}" Margin="11,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"/>
                         <TextBlock x:Name="ProcFilterHint" Text="Filtrar por nome ou PID" Style="{StaticResource Muted}" FontSize="13" Margin="33,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                     </Grid>
                 </DockPanel>
@@ -228,17 +228,17 @@
                                         <TextBlock Text="{Binding Exe}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Pid}" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <Grid Grid.Column="2" VerticalAlignment="Center" Margin="0,0,14,0">
-                                            <Border Height="18" CornerRadius="4" Background="{StaticResource AccentSoft}" HorizontalAlignment="Left" Width="{Binding CpuBarWidth}"/>
+                                            <Border Height="18" CornerRadius="4" Background="{DynamicResource AccentSoft}" HorizontalAlignment="Left" Width="{Binding CpuBarWidth}"/>
                                             <TextBlock Text="{Binding CpuText}" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                         </Grid>
                                         <TextBlock Grid.Column="3" Text="{Binding MemText}" FontSize="12" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="4" Text="{Binding PriorityText}" FontSize="12" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border CornerRadius="6" Padding="7,2" Background="{StaticResource WarnSoft}" Margin="0,0,6,0" Visibility="{Binding RestrainedVisibility}">
-                                                <TextBlock Text="restringido" FontSize="11" Foreground="{StaticResource Warn}"/>
+                                            <Border CornerRadius="6" Padding="7,2" Background="{DynamicResource WarnSoft}" Margin="0,0,6,0" Visibility="{Binding RestrainedVisibility}">
+                                                <TextBlock Text="restringido" FontSize="11" Foreground="{DynamicResource Warn}"/>
                                             </Border>
-                                            <Border CornerRadius="6" Padding="7,2" Background="{StaticResource AccentSoft}" Margin="0,0,6,0" Visibility="{Binding RuleVisibility}">
-                                                <TextBlock Text="regra" FontSize="11" Foreground="{StaticResource Accent}"/>
+                                            <Border CornerRadius="6" Padding="7,2" Background="{DynamicResource AccentSoft}" Margin="0,0,6,0" Visibility="{Binding RuleVisibility}">
+                                                <TextBlock Text="regra" FontSize="11" Foreground="{DynamicResource Accent}"/>
                                             </Border>
                                             <Border CornerRadius="6" Padding="7,2" Background="#1F60A5FA" Visibility="{Binding ForegroundVisibility}">
                                                 <TextBlock Text="em foco" FontSize="11" Foreground="#60A5FA"/>
@@ -272,7 +272,7 @@
                             <TextBlock x:Name="NewRuleHint" Text="programa.exe ou C:\Pasta\*" Style="{StaticResource Muted}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </Grid>
                         <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="AddRule_Click">
-                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" Style="{StaticResource Icon}" FontSize="12" Foreground="#06231F"/><TextBlock Text="Nova regra" Margin="8,0,0,0" Foreground="#06231F"/></StackPanel>
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" Style="{StaticResource Icon}" FontSize="12" Foreground="{DynamicResource OnAccent}"/><TextBlock Text="Nova regra" Margin="8,0,0,0" Foreground="{DynamicResource OnAccent}"/></StackPanel>
                         </Button>
                     </StackPanel>
                 </DockPanel>
@@ -291,15 +291,15 @@
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <DockPanel Margin="0,0,0,12">
-                                                <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource AccentSoft}">
-                                                    <TextBlock Text="&#xE7FC;" Style="{StaticResource Icon}" Foreground="{StaticResource Accent}" HorizontalAlignment="Center"/>
+                                                <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource AccentSoft}">
+                                                    <TextBlock Text="&#xE7FC;" Style="{StaticResource Icon}" Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
                                                 </Border>
                                                 <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Exe}" Style="{StaticResource H2}" TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Style="{StaticResource Muted}"><Run Text="{Binding Kind, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Running, Mode=OneWay}"/></TextBlock>
                                                 </StackPanel>
                                                 <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Click="RemoveRule_Click" Tag="{Binding}" ToolTip="Remover regra">
-                                                    <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedBrush}" FontSize="14"/>
+                                                    <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedBrush}" FontSize="14"/>
                                                 </Button>
                                             </DockPanel>
                                             <UniformGrid Grid.Row="1" Columns="4" Margin="-6,0">
@@ -561,6 +561,14 @@
             <ScrollViewer x:Name="PageSettings" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="28,0,28,24" MaxWidth="820" HorizontalAlignment="Left">
                     <TextBlock Text="Ajustes" Style="{StaticResource H1}" Margin="0,0,0,18"/>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="Aparência" Style="{StaticResource H2}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Azul é o tema original; Claro tem fundo branco; Preto é todo preto (bom para telas OLED)" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <ComboBox x:Name="SetTheme" Width="320" HorizontalAlignment="Left" SelectionChanged="Theme_Changed"/>
+                        </StackPanel>
+                    </Border>
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                         <StackPanel>

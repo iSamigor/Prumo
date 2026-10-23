@@ -4,7 +4,7 @@
         Title="Afinidade de CPU" Width="500" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
-        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource UiFont}" Foreground="{DynamicResource Text}"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         PreviewKeyDown="Window_PreviewKeyDown">
 
@@ -13,26 +13,26 @@
             <Setter Property="Width" Value="44"/>
             <Setter Property="Height" Value="36"/>
             <Setter Property="Margin" Value="4"/>
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
             <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="bd" CornerRadius="8" Background="{StaticResource Surface2}"
-                                BorderBrush="{StaticResource Border}" BorderThickness="1">
+                        <Border x:Name="bd" CornerRadius="8" Background="{DynamicResource Surface2}"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
                             <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="{TemplateBinding Foreground}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource Hover}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentGradient}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentGradient}"/>
                                 <Setter TargetName="bd" Property="BorderBrush" Value="Transparent"/>
-                                <Setter Property="Foreground" Value="#06231F"/>
+                                <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -44,8 +44,8 @@
 
     <!-- Margin leaves room for the shadow inside the transparent window -->
     <Grid Margin="18">
-        <Border CornerRadius="14" Background="{StaticResource Surface}"
-                BorderBrush="{StaticResource Border}" BorderThickness="1">
+        <Border CornerRadius="14" Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="1">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Opacity="0.4" Color="#000000"/>
             </Border.Effect>
@@ -77,8 +77,8 @@
                     <Button Content="Sem a CPU 0" Tag="no0" Click="Quick_Click" Padding="11,4" FontSize="12" Margin="3"/>
                 </WrapPanel>
 
-                <Border Grid.Row="2" Background="{StaticResource Bg}" CornerRadius="10" Padding="8"
-                        BorderBrush="{StaticResource Border}" BorderThickness="1">
+                <Border Grid.Row="2" Background="{DynamicResource Bg}" CornerRadius="10" Padding="8"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1">
                     <StackPanel x:Name="CpuHost"/>
                 </Border>
 

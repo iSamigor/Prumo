@@ -34,8 +34,9 @@ public sealed class Tray : IDisposable
         {
             _pbItem.Checked = _engine.Config.ProBalance.Enabled;
             perfItem.Checked = _engine.Config.PerformanceMode;
+            foreach (Forms.ToolStripItem i in menu.Items) i.ForeColor = UI.Themes.Gdi("Text");
         };
-        foreach (Forms.ToolStripItem i in menu.Items) { i.ForeColor = Color.FromArgb(0xE6, 0xED, 0xF7); i.Padding = new Forms.Padding(4, 3, 4, 3); }
+        foreach (Forms.ToolStripItem i in menu.Items) i.Padding = new Forms.Padding(4, 3, 4, 3);
 
         _icon.ContextMenuStrip = menu;
         _icon.Text = "Prumo";
@@ -124,14 +125,16 @@ public sealed class Tray : IDisposable
         public DarkRenderer() : base(new DarkColors()) { RoundedEdges = false; }
         protected override void OnRenderItemCheck(Forms.ToolStripItemImageRenderEventArgs e)
         {
-            using var b = new SolidBrush(Color.FromArgb(0x2D, 0xD4, 0xBF));
+            using var b = new SolidBrush(UI.Themes.Gdi("Accent"));
             e.Graphics.FillEllipse(b, e.ImageRectangle.X + 4, e.ImageRectangle.Y + 4, 8, 8);
         }
     }
 
     sealed class DarkColors : Forms.ProfessionalColorTable
     {
-        static readonly Color Bg = Color.FromArgb(0x17, 0x22, 0x3A), Hover = Color.FromArgb(0x1D, 0x2A, 0x47), Line = Color.FromArgb(0x22, 0x30, 0x4D);
+        static Color Bg => UI.Themes.Gdi("Surface2");
+        static Color Hover => UI.Themes.Gdi("Hover");
+        static Color Line => UI.Themes.Gdi("Border");
         public override Color ToolStripDropDownBackground => Bg;
         public override Color MenuBorder => Line;
         public override Color MenuItemBorder => Hover;

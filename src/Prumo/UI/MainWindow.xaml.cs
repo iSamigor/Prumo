@@ -62,6 +62,14 @@ public partial class MainWindow : Window
         LoadRules();
         LoadSettings();
 
+        Themes.Changed += () =>
+        {
+            MainGraph.Series[0].Color = Themes.Color("Accent");
+            MainGraph.Series[1].Color = Themes.Color("Violet");
+            MainGraph.InvalidateVisual();
+            foreach (var bar in _cores) bar.InvalidateVisual();
+        };
+
         StateChanged += (_, _) => MaxButton.Content = WindowState == WindowState.Maximized ? "" : "";
         AboutText.Text = $"Prumo {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)}  ·  configuração em {AppConfig.FilePath}";
     }
@@ -591,6 +599,9 @@ public partial class MainWindow : Window
         _loading = true;
         SetAutostart.IsChecked = Autostart.IsEnabled();
         SetCloseToTray.IsChecked = _engine.Config.CloseToTray;
+        var themes = new[] { new Option<string>("Azul", "Azul"), new Option<string>("Claro", "Claro"), new Option<string>("Preto", "Preto") };
+        SetTheme.ItemsSource = themes;
+        SetTheme.SelectedItem = themes.FirstOrDefault(t => t.Value == Themes.Current.ToString()) ?? themes[0];
         var plans = PowerPlans.List();
         SetPlanNow.Text = "Ativo agora: " + (PowerPlans.ActiveName() ?? "—");
         var choices = new[] { new Option<string>("O plano que estava ativo antes", null) }
@@ -614,6 +625,14 @@ public partial class MainWindow : Window
     void CloseToTray_Click(object sender, RoutedEventArgs e)
     {
         _engine.Config.CloseToTray = SetCloseToTray.IsChecked == true;
+        _engine.ConfigChanged();
+    }
+
+    void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || SetTheme.SelectedItem is not Option<string> o) return;
+        Themes.Apply(Themes.Parse(o.Value));
+        _engine.Config.Theme = Themes.Current.ToString();
         _engine.ConfigChanged();
     }
 

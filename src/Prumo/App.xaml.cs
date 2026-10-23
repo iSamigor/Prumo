@@ -1,6 +1,4 @@
-using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Interop;
 using Prumo.Core;
 using Prumo.UI;
 
@@ -57,6 +55,7 @@ public partial class App : Application
         ISystemSampler? sampler = null;
         try { sampler = new SystemSampler(); } catch { }
         _engine = new Engine(config, log, sampler);
+        Themes.Apply(Themes.Parse(config.Theme));
         _window = new MainWindow(_engine, log);
         _tray = new Tray(_engine, ShowWindow, ExitApp);
         _engine.Updated += s => Dispatcher.BeginInvoke(() => _tray?.Update(s));
@@ -68,7 +67,7 @@ public partial class App : Application
 
         bool toTray = e.Args.Contains("--tray", StringComparer.OrdinalIgnoreCase);
         if (!toTray) ShowWindow();
-        else EnableDarkTitle(_window);
+        else Themes.ApplyTitleBar(_window);
     }
 
     /// <summary>Turns on every setting that helps games and adds a rule per game library (installer option).</summary>
@@ -119,7 +118,7 @@ public partial class App : Application
     void ShowWindow()
     {
         if (_window is null) return;
-        EnableDarkTitle(_window);
+        Themes.ApplyTitleBar(_window);
         _window.ShowFromTray();
     }
 
@@ -135,16 +134,5 @@ public partial class App : Application
         _engine?.Dispose();   // restores restrained processes and the power plan
         _mutex?.Dispose();
         base.OnExit(e);
-    }
-
-    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int value, int size);
-
-    static void EnableDarkTitle(Window w)
-    {
-        var h = new WindowInteropHelper(w).EnsureHandle();
-        int on = 1;
-        DwmSetWindowAttribute(h, 20, ref on, 4);          // immersive dark mode (rounded corners/borders)
-        int round = 2;
-        DwmSetWindowAttribute(h, 33, ref round, 4);       // Windows 11 rounded corners
     }
 }
