@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\prumo.ico</ApplicationIcon>
+    <AssemblyName>Prumo</AssemblyName>
+    <RootNamespace>Prumo</RootNamespace>
+    <Version>0.1.0</Version>
+    <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <!-- DPI awareness is declared in app.manifest on purpose (WPF app; WinForms only for the tray). -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\prumo.ico" />
+  </ItemGroup>
+
+  <!-- WinForms is only here for the tray icon; keep its names out of the WPF code. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>
