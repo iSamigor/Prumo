@@ -249,6 +249,15 @@ public sealed unsafe class Engine : IDisposable
         _lastTotal = Math.Min(100, totalCpu);
 
         SmartTrim(procs, fgPid, parents, sys, now, view);
+        var mc = view.Cfg.MemoryClean;
+        if (mc.AutoAbovePercent > 0 && sys is not null && sys.MemoryLoad >= mc.AutoAbovePercent &&
+            now - _lastAutoClean >= mc.AutoMinIntervalMinutes * 60_000L)
+        {
+            _lastAutoClean = now;
+            _log.Add(EventKind.Memory, 0, "prumo.exe", $"RAM em {sys.MemoryLoad:0}%: limpando a memória sozinho");
+            _ = CleanMemoryAsync(mc);
+        }
+        ManualClean(procs, fgPid, parents, view);
         RunRestarts(now);
         UpdatePowerPlan(planRules, gameRunning);
         if (keepAwake != _awake)
@@ -703,16 +712,8 @@ public sealed unsafe class Engine : IDisposable
             _trimQueue.Clear(); _trimCount = 0; _trimBytes = 0;
             ulong min = (ulong)Math.Max(1, st.MinProcessMb) << 20;
             foreach (var p in procs)
-            {
-                if (p.Pid <= 4 || p.Pid == _selfPid || p.SessionId == 0 || p.WorkingSet < min) continue;
-                if (p.Pid == fgPid || IsDescendant(p.Pid, fgPid, parents) || Untouchable.Contains(p.Name)) continue;
-                if (st.Exclusions.Contains(p.Name, StringComparer.OrdinalIgnoreCase)) continue;
-                // Programs with a priority rule are the ones the user cares about (games): never page them out.
-                string? path;
-                lock (_tracked) path = _tracked.TryGetValue(p.Pid, out var t) ? t.Path : null;
-                if (view.Matcher.Match(p.Name, path) is { CpuPriority: not null }) continue;
-                _trimQueue.Enqueue((p.Pid, p.CreateTime, p.WorkingSet, p.Name));
-            }
+                if (p.WorkingSet >= min && TrimCandidate(p, fgPid, parents, view))
+                    _trimQueue.Enqueue((p.Pid, p.CreateTime, p.WorkingSet, p.Name));
         }
 
         // A few processes per tick: trimming dozens at once stalls the loop (and the disk).
@@ -735,6 +736,60 @@ public sealed unsafe class Engine : IDisposable
                     _log.Add(EventKind.Memory, 0, "prumo.exe", $"Lista de espera limpa (~{standby >> 20} MB): só {avail >> 20} MB livres");
             }
         }
+    }
+
+    /// <summary>A background process whose memory may be trimmed: never the foreground one, its children,
+    /// system processes, SmartTrim exclusions or programs with a priority rule (games).</summary>
+    bool TrimCandidate(RawProcess p, int fgPid, Dictionary<int, (int Parent, long Create)> parents, View view)
+    {
+        if (p.Pid <= 4 || p.Pid == _selfPid || p.SessionId == 0) return false;
+        if (p.Pid == fgPid || IsDescendant(p.Pid, fgPid, parents) || Untouchable.Contains(p.Name)) return false;
+        if (view.Cfg.SmartTrim.Exclusions.Contains(p.Name, StringComparer.OrdinalIgnoreCase)) return false;
+        string? path;
+        lock (_tracked) path = _tracked.TryGetValue(p.Pid, out var t) ? t.Path : null;
+        return view.Matcher.Match(p.Name, path) is not { CpuPriority: not null };
+    }
+
+    // ------------------------------------------------- memory clean (manual)
+
+    readonly object _cleanLock = new();
+    TaskCompletionSource<MemoryCleanResult>? _cleanPending;
+    MemoryCleanSettings? _cleanSettings;
+    bool _cleanRunning;
+    long _lastAutoClean = -24 * 3_600_000L;
+
+    /// <summary>"Limpar memória agora": the next tick picks the processes to trim and the cleaning runs on
+    /// the thread pool. A request while one is running gets the running one's result.</summary>
+    public Task<MemoryCleanResult> CleanMemoryAsync(MemoryCleanSettings settings)
+    {
+        lock (_cleanLock)
+        {
+            if (_cleanPending is not null) return _cleanPending.Task;
+            _cleanPending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _cleanSettings = settings;
+            return _cleanPending.Task;
+        }
+    }
+
+    void ManualClean(List<RawProcess> procs, int fgPid, Dictionary<int, (int Parent, long Create)> parents, View view)
+    {
+        TaskCompletionSource<MemoryCleanResult> tcs; MemoryCleanSettings s;
+        lock (_cleanLock)
+        {
+            if (_cleanPending is null || _cleanSettings is null || _cleanRunning) return;
+            tcs = _cleanPending; s = _cleanSettings; _cleanRunning = true;
+        }
+        var targets = s.WorkingSets
+            ? procs.Where(p => p.WorkingSet >= 8 << 20 && TrimCandidate(p, fgPid, parents, view)).Select(p => (p.Pid, p.CreateTime)).ToList()
+            : new List<(int, long)>();
+        Task.Run(() =>
+        {
+            var r = MemoryTools.Clean(s, targets);
+            _log.Add(EventKind.Memory, 0, "prumo.exe", $"Memória limpa: +{r.FreedBytes >> 20} MB livres ({r.Trimmed} processos em segundo plano)"
+                + (r.Failed.Count > 0 ? "; não consegui limpar: " + string.Join(", ", r.Failed) : ""));
+            lock (_cleanLock) { _cleanPending = null; _cleanSettings = null; _cleanRunning = false; }
+            tcs.TrySetResult(r);
+        });
     }
 
     // ------------------------------------------------------------ power plan

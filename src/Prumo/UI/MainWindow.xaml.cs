@@ -106,6 +106,8 @@ public partial class MainWindow : Window
         PageLog.Visibility = tag == "Log" ? Visibility.Visible : Visibility.Collapsed;
         PagePerformance.Visibility = tag == "Performance" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Performance") LoadPerformance();
+        PageCleanup.Visibility = tag == "Cleanup" ? Visibility.Visible : Visibility.Collapsed;
+        if (tag == "Cleanup") LoadCleanup();
         PageAutomation.Visibility = tag == "Automation" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "Automation") LoadAutomation();
         PageSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;

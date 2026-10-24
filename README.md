@@ -28,6 +28,12 @@ Sem tela de propaganda na inicialização, sem conta, sem telemetria.
 
 **Desempenho**: boost do programa em primeiro plano, modo desempenho (mantém um plano de energia), SmartTrim (libera memória de processos em segundo plano e limpa a lista de espera quando a RAM aperta) e resolução do timer do sistema.
 
+**Limpeza** (o que vale a pena do Mem Reduct e do Microsoft PC Manager):
+- **Limpar memória agora**: memória de programas em segundo plano, cache de arquivos do sistema, lista modificada, lista de espera (só baixa prioridade ou toda), páginas iguais e cache do registro; nunca mexe no programa em foco nem em jogos com regra. Também pelo ícone da bandeja, pelo atalho **Ctrl+F1** e sozinho quando a RAM passa de X%
+- **Arquivos que sobram**: temporários, downloads do Windows Update, Otimização de Entrega, relatórios de erro, despejos de memória e Lixeira, com análise do tamanho real em disco antes de apagar. Cache de shaders e dados de navegador ficam de fora de propósito
+- **Programas que abrem com o Windows**: liga e desliga do mesmo jeito que o Gerenciador de Tarefas (reversível, nada é apagado)
+- **Limpar cache de DNS**
+
 **Interface**: gráficos de CPU por núcleo, memória, GPU e restrições do ProBalance; lista de processos com menu de contexto; registro com busca e exportação; ícone na bandeja que mostra a carga da CPU; temas **Azul**, **Claro** e **Preto** (OLED).
 
 ![Automação](docs/automacao.png)

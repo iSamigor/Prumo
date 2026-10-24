@@ -2,11 +2,18 @@ using System.Runtime.InteropServices;
 
 namespace Prumo.Core;
 
+/// <summary>What "Limpar memória agora" did: RAM available before and after, and the regions it could not clean.</summary>
+public sealed record MemoryCleanResult(ulong FreedBytes, ulong AvailableBefore, ulong AvailableAfter, int Trimmed, List<string> Failed);
+
 /// <summary>Memory housekeeping (standby purge, working-set trim) and quick counters. Never throws.</summary>
 public static class MemoryTools
 {
     private const int SystemMemoryListInformation = 80;
+    private const int SystemCombinePhysicalMemoryInformation = 130;
+    private const int SystemRegistryReconciliationInformation = 155;
+    private const int MemoryFlushModifiedList = 3;
     private const int MemoryPurgeStandbyList = 4;
+    private const int MemoryPurgeLowPriorityStandbyList = 5;
 
     private const uint ProcessSetQuota = 0x0100;
     private const uint ProcessQueryLimitedInformation = 0x1000;
@@ -26,6 +33,46 @@ public static class MemoryTools
             return NtSetSystemInformation(SystemMemoryListInformation, ref command, sizeof(int)) >= 0;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// "Limpar memória agora": the regions Mem Reduct cleans, in its order (working sets, system file
+    /// cache, modified list, standby, combine identical pages, registry cache). Takes up to a few
+    /// seconds: call it off the UI thread. Never throws.
+    /// </summary>
+    public static MemoryCleanResult Clean(MemoryCleanSettings s, IReadOnlyList<(int Pid, long Create)> trimTargets)
+    {
+        ulong before = AvailableBytes();
+        var failed = new List<string>();
+        int trimmed = 0;
+        try
+        {
+            bool profile = EnablePrivilege("SeProfileSingleProcessPrivilege");
+            bool quota = EnablePrivilege("SeIncreaseQuotaPrivilege");
+
+            if (s.WorkingSets)
+                foreach (var (pid, create) in trimTargets)
+                    if (TrimWorkingSet(pid, create)) trimmed++;
+            if (s.SystemFileCache && !(quota && SetSystemFileCacheSize(-1, -1, 0))) failed.Add("cache de arquivos do sistema");
+            // Modified pages go to the page file and land on the standby list, which the next step drops.
+            if (s.ModifiedList && !(profile && ListCommand(MemoryFlushModifiedList))) failed.Add("lista modificada");
+            if (s.WholeStandby) { if (!(profile && ListCommand(MemoryPurgeStandbyList))) failed.Add("lista de espera"); }
+            else if (s.LowPriorityStandby && !(profile && ListCommand(MemoryPurgeLowPriorityStandbyList))) failed.Add("lista de espera (baixa prioridade)");
+            if (s.CombinePages && !(profile && CombinePages())) failed.Add("páginas iguais");
+            if (s.RegistryCache && NtSetSystemInformation(SystemRegistryReconciliationInformation, 0, 0) < 0) failed.Add("cache do registro");
+        }
+        catch { failed.Add("erro inesperado"); }
+
+        ulong after = AvailableBytes();
+        return new MemoryCleanResult(after > before ? after - before : 0, before, after, trimmed, failed);
+    }
+
+    static bool ListCommand(int command) => NtSetSystemInformation(SystemMemoryListInformation, ref command, sizeof(int)) >= 0;
+
+    static unsafe bool CombinePages()
+    {
+        var info = default(MemoryCombineInformationEx);
+        return NtSetSystemInformation(SystemCombinePhysicalMemoryInformation, (nint)(&info), sizeof(MemoryCombineInformationEx)) >= 0;
     }
 
     /// <summary>Empties the working set of one process without touching its private commit.</summary>
@@ -127,8 +174,22 @@ public static class MemoryTools
         public nuint ModifiedPageCountPageFile;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryCombineInformationEx
+    {
+        public nint Handle;
+        public nuint PagesCombined;
+        public uint Flags;
+    }
+
     [DllImport("ntdll.dll")]
     private static extern int NtSetSystemInformation(int classId, ref int info, int length);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtSetSystemInformation(int classId, nint info, int length);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetSystemFileCacheSize(nint min, nint max, uint flags);
 
     [DllImport("ntdll.dll")]
     private static extern unsafe int NtQuerySystemInformation(int classId, void* info, int length, out int returned);

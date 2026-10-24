@@ -111,6 +111,25 @@ public sealed class SmartTrimSettings
     public List<string> Exclusions { get; set; } = new();
 }
 
+/// <summary>Memory regions "Limpar memória agora" cleans (the Mem Reduct set).</summary>
+public sealed class MemoryCleanSettings
+{
+    /// <summary>Trim background processes (never the foreground one, its children or programs with a priority rule).</summary>
+    public bool WorkingSets { get; set; } = true;
+    public bool LowPriorityStandby { get; set; } = true;
+    /// <summary>The whole standby list, file cache that would come back from RAM included.</summary>
+    public bool WholeStandby { get; set; }
+    public bool ModifiedList { get; set; } = true;
+    public bool CombinePages { get; set; } = true;
+    public bool SystemFileCache { get; set; } = true;
+    public bool RegistryCache { get; set; } = true;
+    /// <summary>Clean by itself when RAM load reaches this (%), at most every <see cref="AutoMinIntervalMinutes"/>; 0 = off.</summary>
+    public int AutoAbovePercent { get; set; }
+    public int AutoMinIntervalMinutes { get; set; } = 10;
+    /// <summary>Global Ctrl+F1 hotkey (the Mem Reduct one).</summary>
+    public bool Hotkey { get; set; }
+}
+
 public sealed class ProBalanceSettings
 {
     public bool Enabled { get; set; } = true;
@@ -154,6 +173,9 @@ public sealed class AppConfig
     public int UpdateIntervalMs { get; set; } = 1000;
     public ForegroundBoostSettings ForegroundBoost { get; set; } = new();
     public SmartTrimSettings SmartTrim { get; set; } = new();
+    public MemoryCleanSettings MemoryClean { get; set; } = new();
+    /// <summary>Disk cleanup categories ticked in Limpeza (names of <see cref="CleanCategory"/>); null = the defaults.</summary>
+    public List<string>? CleanupCategories { get; set; }
     /// <summary>"Modo desempenho": keep <see cref="PerformancePlan"/> active regardless of what runs.</summary>
     public bool PerformanceMode { get; set; }
     public string? PerformancePlan { get; set; }
@@ -235,7 +257,7 @@ public sealed class AppConfig
     {
         SchemaVersion = CurrentSchema;
         Rules ??= new(); Disallowed ??= new(); KeepRunning ??= new(); Watchdog ??= new();
-        ProBalance ??= new(); ForegroundBoost ??= new(); SmartTrim ??= new(); IdleSaver ??= new();
+        ProBalance ??= new(); ForegroundBoost ??= new(); SmartTrim ??= new(); IdleSaver ??= new(); MemoryClean ??= new();
         Rules.RemoveAll(r => r is null || string.IsNullOrWhiteSpace(r.Exe));
         foreach (var r in Rules)
             if (r.CpuLimit is { } l)
@@ -269,6 +291,8 @@ public sealed class AppConfig
         st.IntervalMinutes = Math.Clamp(st.IntervalMinutes, 1, 1440);
         st.PurgeBelowFreeMb = Math.Clamp(st.PurgeBelowFreeMb, 64, 65_536);
 
+        MemoryClean.AutoAbovePercent = MemoryClean.AutoAbovePercent <= 0 ? 0 : Math.Clamp(MemoryClean.AutoAbovePercent, 50, 99);
+        MemoryClean.AutoMinIntervalMinutes = Math.Clamp(MemoryClean.AutoMinIntervalMinutes, 1, 1440);
         IdleSaver.IdleMinutes = Math.Clamp(IdleSaver.IdleMinutes, 1, 240);
         UpdateIntervalMs = Math.Clamp(UpdateIntervalMs, 250, 10_000);
         if (ForegroundBoost.Priority is not (CpuPriority.AboveNormal or CpuPriority.High)) ForegroundBoost.Priority = CpuPriority.AboveNormal;

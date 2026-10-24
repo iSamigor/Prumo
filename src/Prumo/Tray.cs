@@ -28,6 +28,7 @@ public sealed class Tray : IDisposable
         menu.Items.Add(_pbItem);
         var perfItem = new Forms.ToolStripMenuItem("Modo desempenho", null, (_, _) => TogglePerformance());
         menu.Items.Add(perfItem);
+        menu.Items.Add("Limpar memória agora", null, (_, _) => CleanMemory());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Sair", null, (_, _) => _exit());
         menu.Opening += (_, _) =>
@@ -51,6 +52,12 @@ public sealed class Tray : IDisposable
         _engine.ConfigChanged();
     }
 
+    async void CleanMemory()
+    {
+        var r = await _engine.CleanMemoryAsync(_engine.Config.MemoryClean);
+        _icon.ShowBalloonTip(3000, "Prumo", $"Memória limpa: {UI.Format.Bytes(r.FreedBytes)} liberados ({UI.Format.Bytes(r.AvailableAfter)} disponíveis)", Forms.ToolTipIcon.None);
+    }
+
     void TogglePerformance()
     {
         var c = _engine.Config;
@@ -59,8 +66,48 @@ public sealed class Tray : IDisposable
         _engine.ConfigChanged();
     }
 
+    // Ctrl+F1 "Limpar memória agora", the Mem Reduct hotkey. Follows the setting on every engine update.
+    HotkeyWindow? _hotkey;
+
+    void SyncHotkey()
+    {
+        bool want = _engine.Config.MemoryClean.Hotkey;
+        if (want == (_hotkey is not null)) return;
+        if (want) _hotkey = HotkeyWindow.TryCreate(CleanMemory);
+        else { _hotkey?.Dispose(); _hotkey = null; }
+    }
+
+    sealed class HotkeyWindow : Forms.NativeWindow, IDisposable
+    {
+        const int WM_HOTKEY = 0x0312, MOD_CONTROL = 0x2, MOD_NOREPEAT = 0x4000, VK_F1 = 0x70;
+        readonly Action _pressed;
+
+        [DllImport("user32.dll")] static extern bool RegisterHotKey(nint hwnd, int id, int mods, int vk);
+        [DllImport("user32.dll")] static extern bool UnregisterHotKey(nint hwnd, int id);
+
+        HotkeyWindow(Action pressed) { _pressed = pressed; CreateHandle(new Forms.CreateParams()); }
+
+        /// <summary>Null when another program already owns Ctrl+F1.</summary>
+        public static HotkeyWindow? TryCreate(Action pressed)
+        {
+            var w = new HotkeyWindow(pressed);
+            if (RegisterHotKey(w.Handle, 1, MOD_CONTROL | MOD_NOREPEAT, VK_F1)) return w;
+            w.DestroyHandle();
+            return null;
+        }
+
+        protected override void WndProc(ref Forms.Message m)
+        {
+            if (m.Msg == WM_HOTKEY) _pressed();
+            base.WndProc(ref m);
+        }
+
+        public void Dispose() { UnregisterHotKey(Handle, 1); DestroyHandle(); }
+    }
+
     public void Update(EngineSnapshot s)
     {
+        SyncHotkey();
         Update(s.CpuTotal, s.RestrainedCount > 0);
         var text = $"Prumo · CPU {s.CpuTotal:0}%";
         if (s.RestrainedCount > 0) text += $" · restringindo {s.RestrainedCount}";
@@ -117,6 +164,7 @@ public sealed class Tray : IDisposable
         _icon.Visible = false;
         _icon.Dispose();
         _current?.Dispose();
+        _hotkey?.Dispose();
     }
 
     sealed class DarkRenderer : Forms.ToolStripProfessionalRenderer

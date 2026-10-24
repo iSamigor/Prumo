@@ -53,6 +53,9 @@
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Performance">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xEC4A;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Desempenho" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Cleanup">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Limpeza" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                    </RadioButton>
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Checked="Nav_Checked" Tag="Automation">
                         <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE945;" Style="{StaticResource Icon}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="Automação" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
                     </RadioButton>
@@ -518,6 +521,112 @@
                             <TextBlock Text="Um timer mais fino deixa esperas curtas mais precisas. No Windows 11 o efeito é pequeno e vale só enquanto o Prumo estiver aberto." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,12"/>
                             <ComboBox x:Name="TimerRes" Width="250" HorizontalAlignment="Left" SelectionChanged="PerfChanged"/>
                         </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== Cleanup ===== -->
+            <ScrollViewer x:Name="PageCleanup" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="28,0,28,24" MaxWidth="900" HorizontalAlignment="Left">
+                    <TextBlock Text="Limpeza" Style="{StaticResource H1}"/>
+                    <TextBlock Text="Memória, arquivos que sobram e programas que abrem com o Windows" Style="{StaticResource Muted}" FontSize="13" Margin="0,4,0,18"/>
+
+                    <!-- Memory (Mem Reduct) -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button x:Name="CleanMemButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Limpar memória agora" Click="CleanMemory_Click"/>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Memória" Style="{StaticResource H2}"/><ui:Help Text="Libera RAM na hora, como o Mem Reduct: tira da RAM o que programas em segundo plano não estão usando e esvazia caches que o Windows recria quando precisar.&#10;&#10;Ajuda quando a RAM está quase cheia antes de abrir um jogo pesado. Com RAM sobrando, o ganho é pequeno: RAM livre parada não deixa o PC mais rápido.&#10;&#10;Nunca mexe no programa em foco, nos filhos dele nem em programas com regra de prioridade (jogos). Também fica no menu do ícone da bandeja."/></StackPanel>
+                                    <TextBlock x:Name="MemStatus" Text="—" Style="{StaticResource Muted}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <UniformGrid Columns="2" Margin="0,12,0,0">
+                                <CheckBox x:Name="McWorkingSets" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Memória dos programas em segundo plano" VerticalAlignment="Center"/><ui:Help Text="Tira da RAM as páginas que os programas em segundo plano não estão usando (working set). O programa continua funcionando; se precisar daquela memória de novo, o Windows traz de volta."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McFileCache" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Cache de arquivos do sistema" VerticalAlignment="Center"/><ui:Help Text="Esvazia a parte da RAM que o Windows usa para guardar pedaços de arquivos lidos recentemente pelo próprio sistema."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McModified" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Lista modificada" VerticalAlignment="Center"/><ui:Help Text="Páginas alteradas que ainda vão ser gravadas no arquivo de paginação. Grava agora e libera a RAM delas."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McLowStandby" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Lista de espera de baixa prioridade" VerticalAlignment="Center"/><ui:Help Text="Libera o cache de arquivos que o Windows considera pouco importante. Seguro: o cache mais usado fica."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McWholeStandby" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Toda a lista de espera" VerticalAlignment="Center"/><ui:Help Text="Libera TODO o cache de arquivos da RAM, inclusive o que você usa sempre. Libera mais RAM, mas programas e jogos abertos recentemente vão carregar do disco de novo, mais devagar, na próxima vez.&#10;&#10;Use só se um jogo engasga com pouca RAM livre."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McCombine" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Juntar páginas iguais" VerticalAlignment="Center"/><ui:Help Text="O Windows procura páginas de memória com conteúdo idêntico e guarda uma cópia só."/></StackPanel></CheckBox>
+                                <CheckBox x:Name="McRegistry" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,4"><StackPanel Orientation="Horizontal"><TextBlock Text="Cache do registro" VerticalAlignment="Center"/><ui:Help Text="Grava no disco as alterações do registro que estavam pendentes na memória e libera esse espaço."/></StackPanel></CheckBox>
+                            </UniformGrid>
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <CheckBox x:Name="McAuto" Style="{StaticResource Switch}" Click="MemCleanChanged" VerticalAlignment="Center"><StackPanel Orientation="Horizontal"><TextBlock Text="Limpar sozinho quando a RAM passar de (%)" VerticalAlignment="Center"/><ui:Help Text="Faz a limpeza acima automaticamente quando o uso de RAM chegar neste valor, no máximo uma vez a cada 10 minutos. Bom para PCs que ficam sem RAM livre; com RAM de sobra, deixe desligado."/></StackPanel></CheckBox>
+                                <TextBox x:Name="McAutoPercent" Width="60" Margin="12,0,0,0" LostFocus="MemCleanChanged"/>
+                            </StackPanel>
+                            <CheckBox x:Name="McHotkey" Style="{StaticResource Switch}" Click="MemCleanChanged" Margin="0,8,0,0"><StackPanel Orientation="Horizontal"><TextBlock Text="Atalho Ctrl+F1 para limpar a memória" VerticalAlignment="Center"/><ui:Help Text="Aperte Ctrl+F1 em qualquer lugar para limpar a memória (o mesmo atalho do Mem Reduct). Se outro programa já usa Ctrl+F1, o atalho não liga."/></StackPanel></CheckBox>
+                            <TextBlock x:Name="MemResult" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Disk cleanup (PC Manager) -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button x:Name="ScanButton" Content="Analisar" Click="ScanDisk_Click"/>
+                                    <Button x:Name="CleanDiskButton" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Content="Limpar selecionados" Click="CleanDisk_Click" IsEnabled="False"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Arquivos que sobram" Style="{StaticResource H2}"/><ui:Help Text="Apaga arquivos que o Windows e os programas deixam para trás, como a limpeza do PC Manager.&#10;&#10;Arquivos em uso são pulados. Temporários com menos de 1 dia e downloads do Windows Update com menos de 10 dias ficam, porque um instalador ou atualização ainda pode precisar deles.&#10;&#10;De propósito, o Prumo NÃO apaga cache de shaders (os jogos recompilam e engasgam) nem dados de navegador (você perderia logins)."/></StackPanel>
+                                    <TextBlock x:Name="DiskStatus" Text="Clique em Analisar para ver quanto dá para liberar" Style="{StaticResource Muted}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <ItemsControl x:Name="DiskList" Margin="0,12,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,4">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}" VerticalAlignment="Center" FontWeight="SemiBold" Width="90" TextAlignment="Right"/>
+                                            <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Selected}" Click="DiskSelection_Click">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"/>
+                                                    <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" FontSize="11"/>
+                                                </StackPanel>
+                                            </CheckBox>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Startup (Task Manager / PC Manager) -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Atualizar" Click="RefreshStartup_Click"/>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Programas que abrem com o Windows" Style="{StaticResource H2}"/><ui:Help Text="Liga e desliga programas que abrem sozinhos quando você entra no Windows, do mesmo jeito que o Gerenciador de Tarefas. Menos programas na inicialização = Windows pronto mais rápido e menos RAM ocupada.&#10;&#10;Desligar não apaga nada: dá para ligar de novo aqui ou no Gerenciador de Tarefas."/></StackPanel>
+                                    <TextBlock Text="Desligar não desinstala nem apaga nada; vale a partir da próxima vez que você entrar no Windows" Style="{StaticResource Muted}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <ItemsControl x:Name="StartupList" Margin="0,12,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,4">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Location}" Style="{StaticResource Muted}" VerticalAlignment="Center" Width="180" TextAlignment="Right"/>
+                                            <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Enabled, Mode=OneWay}" Tag="{Binding}" Click="StartupToggle_Click">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}"/>
+                                                    <TextBlock Text="{Binding Command}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="560" ToolTip="{Binding Command}"/>
+                                                </StackPanel>
+                                            </CheckBox>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Network -->
+                    <Border Style="{StaticResource Card}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Limpar cache de DNS" Click="FlushDns_Click" VerticalAlignment="Center"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="Rede" Style="{StaticResource H2}"/><ui:Help Text="Apaga a lista de endereços de sites que o Windows guardou (o mesmo que ipconfig /flushdns). Resolve site que não abre depois de mudar de DNS ou de rede. Não deixa a internet mais rápida."/></StackPanel>
+                                <TextBlock x:Name="DnsStatus" Text="Resolve site que não abre depois de trocar de rede ou de DNS" Style="{StaticResource Muted}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
                     </Border>
                 </StackPanel>
             </ScrollViewer>

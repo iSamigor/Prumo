@@ -12,7 +12,7 @@
     <ApplicationIcon>Assets\prumo.ico</ApplicationIcon>
     <AssemblyName>Prumo</AssemblyName>
     <RootNamespace>Prumo</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
     <!-- DPI awareness is declared in app.manifest on purpose (WPF app; WinForms only for the tray). -->
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
